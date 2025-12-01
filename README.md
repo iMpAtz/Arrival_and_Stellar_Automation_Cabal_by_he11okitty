@@ -45,9 +45,6 @@ In case you want to compile it yourself into an .exe file:
   - then application processes this data - if it's legit and contains the phrases
   - next step is either success or repeat the process
 - **I would highly recommend to watch the showcase video and pay attention to the area definition and state of stellar window**
- 
-If you have any questions or need assistance contact me on Discord (aquazz) or hit me up ingame (Revolwer).
+ Orinal Source Code Credit :Discord (aquazz) ingame (Revolwer).
 
-youtube example usage video: https://youtu.be/0KVkZXdlfyY
-
-Incase you're not a part of PlayCabal community, here is my referral link: https://playcabal.to/referral/3055
+ this version has been edit by He11oKitty playcabal guild 

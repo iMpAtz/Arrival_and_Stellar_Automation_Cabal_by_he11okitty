@@ -1,0 +1,310 @@
+# Stellar System tab UI
+# Ported from main.py stellar system functionality
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+import threading
+import mouse
+from data.stellar_data import get_stellar_options
+from automation.stellar_automation import StellarAutomation
+
+class StellarTab:
+    def __init__(self, parent_frame, main_window):
+        """Initialize the Stellar System tab"""
+        self.parent_frame = parent_frame
+        self.main_window = main_window
+
+        # Automation components
+        self.automation = StellarAutomation(
+            main_window.game_connector,
+            main_window.ocr_engine,
+            main_window.update_status
+        )
+
+        # UI state
+        self.area = None
+        self.imprint_button_coords = None
+
+        # Create UI
+        self.create_ui()
+
+    def create_ui(self):
+        """Create the stellar system UI"""
+        # Get colors from main window
+        colors = self.main_window.colors if hasattr(self.main_window, 'colors') else {
+            'primary': '#2196F3', 'success': '#4CAF50', 'danger': '#f44336',
+            'text': '#212121', 'text_light': '#757575'
+        }
+        
+        # Main container
+        main_frame = tk.Frame(self.parent_frame, bg='white')
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Instructions card
+        intro_card = tk.Frame(main_frame, bg='#E3F2FD', relief='flat', bd=0)
+        intro_card.pack(fill=tk.X, padx=0, pady=(0, 6))
+        
+        intro_inner = tk.Frame(intro_card, bg='#E3F2FD')
+        intro_inner.pack(fill=tk.X, padx=10, pady=6)
+        
+        icon_label = tk.Label(intro_inner, text="⭐", font=('Segoe UI', 12), bg='#E3F2FD')
+        icon_label.pack(side=tk.LEFT, padx=(0, 6))
+        
+        text_frame = tk.Frame(intro_inner, bg='#E3F2FD')
+        text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        title = tk.Label(text_frame, text="STELLAR SYSTEM - Option Reroll", 
+                        font=('Segoe UI', 9, 'bold'), bg='#E3F2FD', fg=colors['text'], anchor='w')
+        title.pack(fill=tk.X)
+        
+        instructions = (
+            "1) Set Imprint  •  2) Define Area  •  3) Configure  •  4) Start"
+        )
+        subtitle = tk.Label(text_frame, text=instructions, 
+                           font=('Segoe UI', 7), bg='#E3F2FD', fg=colors['text_light'], anchor='w')
+        subtitle.pack(fill=tk.X, pady=(1, 0))
+
+        # Button coordinates section
+        coord_card = tk.Frame(main_frame, bg='white', relief='flat', bd=0)
+        coord_card.pack(fill=tk.X, padx=0, pady=(0, 5))
+        
+        coord_header = tk.Frame(coord_card, bg=colors['primary'], height=28)
+        coord_header.pack(fill=tk.X)
+        tk.Label(coord_header, text="📍 Button Coordinates", 
+                font=('Segoe UI', 8, 'bold'), bg=colors['primary'], fg='white').pack(side=tk.LEFT, padx=10, pady=5)
+        
+        coord_body = tk.Frame(coord_card, bg='white')
+        coord_body.pack(fill=tk.X, padx=10, pady=5)
+        
+        imprint_frame = tk.Frame(coord_body, bg='white')
+        imprint_frame.pack(fill=tk.X)
+        
+        tk.Label(imprint_frame, text="Imprint:", font=('Segoe UI', 8, 'bold'), 
+                bg='white', fg=colors['text'], width=9, anchor='w').pack(side=tk.LEFT)
+        
+        self.imprint_coord_var = tk.StringVar(value="Not set")
+        imprint_value = tk.Label(imprint_frame, textvariable=self.imprint_coord_var, 
+                                font=('Segoe UI', 8), bg='white', fg=colors['primary'], anchor='w')
+        imprint_value.pack(side=tk.LEFT, padx=(5, 8), fill=tk.X, expand=True)
+        
+        imprint_btn = tk.Button(imprint_frame, text="Set", 
+                               font=('Segoe UI', 7, 'bold'),
+                               bg=colors['primary'], fg='white', 
+                               relief='flat', padx=10, pady=3,
+                               cursor='hand2', command=self.set_imprint_button)
+        imprint_btn.pack(side=tk.RIGHT)
+
+        # Option configuration section
+        option_card = tk.Frame(main_frame, bg='white', relief='flat', bd=0)
+        option_card.pack(fill=tk.X, padx=0, pady=(0, 5))
+        
+        option_header = tk.Frame(option_card, bg=colors['success'], height=28)
+        option_header.pack(fill=tk.X)
+        tk.Label(option_header, text="⚙️ Option Configuration", 
+                font=('Segoe UI', 8, 'bold'), bg=colors['success'], fg='white').pack(side=tk.LEFT, padx=10, pady=5)
+        
+        option_body = tk.Frame(option_card, bg='white')
+        option_body.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Option name
+        name_frame = tk.Frame(option_body, bg='white')
+        name_frame.pack(fill=tk.X, pady=(0, 4))
+        
+        tk.Label(name_frame, text="Option:", font=('Segoe UI', 8, 'bold'), 
+                bg='white', fg=colors['text'], width=10, anchor='w').pack(side=tk.LEFT)
+        
+        self.combo_option_name = ttk.Combobox(name_frame, values=get_stellar_options(), 
+                                             state="readonly", width=20, font=('Segoe UI', 7))
+        self.combo_option_name.pack(side=tk.LEFT, padx=(5, 0))
+        
+        # Minimum value
+        value_frame = tk.Frame(option_body, bg='white')
+        value_frame.pack(fill=tk.X)
+        
+        tk.Label(value_frame, text="Min value:", font=('Segoe UI', 8, 'bold'), 
+                bg='white', fg=colors['text'], width=10, anchor='w').pack(side=tk.LEFT)
+        
+        self.entry_option_min_value = tk.Entry(value_frame, font=('Segoe UI', 8), 
+                                               width=10, relief='solid', bd=1)
+        self.entry_option_min_value.pack(side=tk.LEFT, padx=(5, 6))
+        
+        tk.Label(value_frame, text="(optional)", 
+                font=('Segoe UI', 7), bg='white', fg=colors['text_light']).pack(side=tk.LEFT)
+
+        # Visual effect settings section
+        effect_card = tk.Frame(main_frame, bg='white', relief='flat', bd=0)
+        effect_card.pack(fill=tk.X, padx=0, pady=(0, 5))
+        
+        effect_header = tk.Frame(effect_card, bg='#FF9800', height=28)
+        effect_header.pack(fill=tk.X)
+        tk.Label(effect_header, text="✨ Visual Effect", 
+                font=('Segoe UI', 8, 'bold'), bg='#FF9800', fg='white').pack(side=tk.LEFT, padx=10, pady=5)
+        
+        effect_body = tk.Frame(effect_card, bg='white')
+        effect_body.pack(fill=tk.X, padx=10, pady=5)
+        
+        delay_frame = tk.Frame(effect_body, bg='white')
+        delay_frame.pack(fill=tk.X)
+        
+        tk.Label(delay_frame, text="Clear delay:", font=('Segoe UI', 8, 'bold'), 
+                bg='white', fg=colors['text'], width=10, anchor='w').pack(side=tk.LEFT)
+        
+        self.entry_effect_delay = tk.Entry(delay_frame, font=('Segoe UI', 8), 
+                                          width=8, relief='solid', bd=1)
+        self.entry_effect_delay.pack(side=tk.LEFT, padx=(5, 6))
+        self.entry_effect_delay.insert(0, "1000")
+        
+        tk.Label(delay_frame, text="ms (wait for effects)", 
+                font=('Segoe UI', 7), bg='white', fg=colors['text_light']).pack(side=tk.LEFT)
+
+        # OCR Area
+        area_card = tk.Frame(main_frame, bg='white', relief='flat', bd=0)
+        area_card.pack(fill=tk.X, padx=0, pady=(0, 5))
+        
+        area_body = tk.Frame(area_card, bg='white')
+        area_body.pack(fill=tk.X, padx=10, pady=4)
+        
+        self.btn_define_area = tk.Button(area_body, text="📐 Define OCR Area", 
+                                         font=('Segoe UI', 8, 'bold'),
+                                         bg='#9C27B0', fg='white',
+                                         relief='flat', padx=20, pady=6,
+                                         cursor='hand2', command=self.define_area)
+        self.btn_define_area.pack()
+
+        # Control buttons
+        control_card = tk.Frame(main_frame, bg='white', relief='flat', bd=0)
+        control_card.pack(fill=tk.X, padx=0, pady=(0, 0))
+        
+        control_body = tk.Frame(control_card, bg='white')
+        control_body.pack(fill=tk.X, padx=10, pady=8)
+        
+        button_frame = tk.Frame(control_body, bg='white')
+        button_frame.pack()
+        
+        self.btn_start = tk.Button(button_frame, text="▶️ START", 
+                                   font=('Segoe UI', 9, 'bold'),
+                                   bg=colors['success'], fg='white',
+                                   relief='flat', padx=30, pady=8,
+                                   cursor='hand2', state=tk.DISABLED,
+                                   command=self.start_automation)
+        self.btn_start.pack(side=tk.LEFT, padx=(0, 6))
+        
+        self.btn_stop = tk.Button(button_frame, text="⏹️ STOP", 
+                                  font=('Segoe UI', 9, 'bold'),
+                                  bg=colors['danger'], fg='white',
+                                  relief='flat', padx=30, pady=8,
+                                  cursor='hand2', state=tk.DISABLED,
+                                  command=self.stop_automation)
+        self.btn_stop.pack(side=tk.LEFT)
+
+    def set_imprint_button(self):
+        """Set the imprint button coordinates"""
+        # Connect to game if needed
+        if not self.main_window.game_connector.is_connected():
+            if not self.main_window.game_connector.connect_to_game():
+                messagebox.showerror("Error", "Could not connect to the game window. Make sure the game is running.")
+                return
+
+        messagebox.showinfo(
+            "Instruction",
+            "Click on the 'Imprint' button in the game window.\n"
+            "The coordinates will be captured automatically."
+        )
+
+        # Change cursor to indicate click mode
+        self.main_window.root.config(cursor="crosshair")
+
+        def capture_click():
+            """Capture the mouse click coordinates"""
+            try:
+                # Wait for mouse click (exactly as in main.py)
+                mouse.wait(button='left')
+                x, y = mouse.get_position()
+
+                # Convert to window-relative coordinates
+                rel_x, rel_y, success = self.main_window.game_connector.convert_to_window_coords(x, y)
+
+                if success:
+                    self.imprint_button_coords = (rel_x, rel_y)
+                    self.automation.set_imprint_button(self.imprint_button_coords)
+                    self.imprint_coord_var.set(f"({rel_x}, {rel_y})")
+                    self.main_window.update_status(f"Imprint button set at ({rel_x}, {rel_y})")
+                else:
+                    messagebox.showerror("Error", "Failed to convert coordinates")
+
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to capture click: {str(e)}")
+            finally:
+                # Reset cursor
+                self.main_window.root.config(cursor="")
+
+        # Start capture in thread
+        threading.Thread(target=capture_click, daemon=True).start()
+
+    def define_area(self):
+        """Define the OCR area using the shared area selector"""
+        def area_callback(area):
+            """Callback when area is selected"""
+            self.area = area
+            self.automation.set_area(area)
+            self.btn_start.config(state=tk.NORMAL)
+            self.main_window.update_status(f"Area defined: {area}")
+
+        # Use the shared area selector
+        if not hasattr(self.main_window, 'area_selector'):
+            from core.area_selector import AreaSelector
+            self.main_window.area_selector = AreaSelector(self.main_window.root, area_callback)
+        else:
+            self.main_window.area_selector.callback = area_callback
+
+        self.main_window.area_selector.select_area()
+
+    def start_automation(self):
+        """Start the stellar automation"""
+        # Check if another tool is running
+        if not self.main_window.set_running_tool("Stellar System"):
+            return
+
+        # Get configuration
+        option_name = self.combo_option_name.get().strip()
+        option_min_value = self.entry_option_min_value.get().strip()
+        effect_delay = self.entry_effect_delay.get().strip()
+
+        if not option_name:
+            messagebox.showwarning("Missing Option", "Please select an option name.")
+            self.main_window.clear_running_tool()
+            return
+
+        # Validate effect delay
+        try:
+            effect_delay_ms = int(effect_delay) if effect_delay else 1000
+            if effect_delay_ms < 0:
+                effect_delay_ms = 1000
+        except ValueError:
+            effect_delay_ms = 1000
+
+        # Set the effect delay in automation
+        self.automation.set_effect_delay(effect_delay_ms)
+
+        # Start automation
+        if self.automation.start(option_name, option_min_value):
+            self.btn_start.config(state=tk.DISABLED)
+            self.btn_stop.config(state=tk.NORMAL)
+            self.main_window.update_status("Stellar automation started")
+        else:
+            self.main_window.clear_running_tool()
+
+    def stop_automation(self):
+        """Stop the stellar automation"""
+        self.automation.stop()
+        self.btn_start.config(state=tk.NORMAL)
+        self.btn_stop.config(state=tk.DISABLED)
+        self.main_window.clear_running_tool()
+        self.main_window.update_status("Stellar automation stopped")
+
+    def emergency_stop(self):
+        """Emergency stop the automation"""
+        self.automation.emergency_stop()
+        self.btn_start.config(state=tk.NORMAL)
+        self.btn_stop.config(state=tk.DISABLED)
+        self.main_window.clear_running_tool()
