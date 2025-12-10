@@ -193,9 +193,10 @@ class ArrivalAutomation:
         if ('arrival' in text_lower and 'cool' in text_lower and 'time' in text_lower) or \
            ('arrival skill cool time decreas' in text_lower):
             # Try to extract the numeric value (supports both +15s, -15, 15s, 15 formats)
+            # Note: OCR often reads this as "-15" but it should be treated as positive value
             value_match = re.search(r'[-+]?\s*(\d+)\s*s?', text_lower)
             if value_match:
-                value = int(value_match.group(1))
+                value = abs(int(value_match.group(1)))  # Use abs() to convert negative to positive
                 special_stats["Arrival Skill Cool Time decreased."] = value
             else:
                 # If no value found, still mark as detected but with None

@@ -32,11 +32,12 @@ class OCREngine:
         if self.status_callback:
             self.status_callback(message)
 
-    def extract_text(self, image):
+    def extract_text(self, image, config=None):
         """
         Extract text from image using Tesseract
         Args:
             image: PIL Image object
+            config: Custom Tesseract config string (optional)
         Returns:
             Raw text string from OCR
         """
@@ -44,10 +45,51 @@ class OCREngine:
             if image is None:
                 return ""
 
-            text = pytesseract.image_to_string(image)
+            if config:
+                text = pytesseract.image_to_string(image, config=config)
+            else:
+                text = pytesseract.image_to_string(image)
             return text
         except Exception as e:
             self.update_status(f"OCR error: {str(e)}")
+            return ""
+
+    def extract_numbers(self, image):
+        """
+        Extract numbers from image using Tesseract with optimized config
+        Optimized for reading item counts (format: X / Y)
+        Args:
+            image: PIL Image object
+        Returns:
+            Raw text string from OCR, optimized for digits
+        """
+        try:
+            if image is None:
+                return ""
+
+            # Convert to grayscale and enhance contrast to help distinguish similar digits
+            from PIL import ImageEnhance, ImageFilter
+            
+            # Convert to grayscale
+            if image.mode != 'L':
+                image = image.convert('L')
+            
+            # Enhance contrast
+            enhancer = ImageEnhance.Contrast(image)
+            image = enhancer.enhance(2.0)
+            
+            # Sharpen image
+            image = image.filter(ImageFilter.SHARPEN)
+            
+            # Tesseract config optimized for numbers
+            # --psm 7: Treat image as a single text line
+            # --oem 1: Use LSTM neural network engine for better accuracy
+            # tessedit_char_whitelist: Only recognize digits and separator
+            custom_config = r'--psm 7 --oem 1 -c tessedit_char_whitelist=0123456789/ '
+            text = pytesseract.image_to_string(image, config=custom_config)
+            return text
+        except Exception as e:
+            self.update_status(f"OCR number extraction error: {str(e)}")
             return ""
 
     def parse_stellar_text(self, text):

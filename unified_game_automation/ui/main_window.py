@@ -13,12 +13,13 @@ from core.ocr_engine import OCREngine
 from ui.stellar_tab import StellarTab
 from ui.arrival_tab import ArrivalTab
 from ui.heil_tab import HeilTab
+from ui.mail_tab import MailTab
 
 class MainWindow:
     def __init__(self):
         """Initialize the main tabbed window"""
         self.root = tk.Tk()
-        self.root.title("CABAL Automation Tool - v3.0 By Hello Kitty Gang (Not for selling)")
+        self.root.title("CABAL Automation Tool - v4.0 By Hello Kitty Gang (Not for selling)")
         self.root.geometry("700x600")
         self.root.attributes("-topmost", True)
         self.root.resizable(True, True)
@@ -177,16 +178,19 @@ class MainWindow:
         arrival_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
         stellar_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
         heil_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
+        mail_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
 
         # Add tabs to notebook with emoji icons
         self.notebook.add(arrival_frame, text="  ⚔️  Arrival Skill  ")
         self.notebook.add(stellar_frame, text="  ⭐  Stellar System  ")
         self.notebook.add(heil_frame, text="  🎯  Heil Auto  ")
+        self.notebook.add(mail_frame, text="  📧  Mail Receive  ")
 
         # Create tab instances
         self.arrival_tab = ArrivalTab(arrival_frame, self)
         self.stellar_tab = StellarTab(stellar_frame, self)
         self.heil_tab = HeilTab(heil_frame, self)
+        self.mail_tab = MailTab(mail_frame, self)
 
         # Status and Log section
         self.create_status_section(main_frame)
@@ -464,6 +468,8 @@ class MainWindow:
                 self.stellar_tab.emergency_stop()
             elif self.current_running_tool == "Arrival Skill":
                 self.arrival_tab.emergency_stop()
+            elif self.current_running_tool == "Auto Mail Receive":
+                self.mail_tab.emergency_stop()
             elif self.current_running_tool == "Heil Auto":
                 self.heil_tab.emergency_stop()
 
