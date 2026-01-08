@@ -209,7 +209,7 @@ class HeilTab:
         tk.Label(ocr_row1, text="Item Count:", font=('Segoe UI', 8, 'bold'), 
                 bg='white', fg=colors['text'], width=12, anchor='w').pack(side=tk.LEFT)
         
-        self.btn_define_area_count = tk.Button(ocr_row1, text="Define OCR Area (X / Y)", 
+        self.btn_define_area_count = tk.Button(ocr_row1, text="OCR area (Item Count)", 
                                                font=('Segoe UI', 8, 'bold'),
                                                bg='#9C27B0', fg='white',
                                                relief='flat', padx=15, pady=4,

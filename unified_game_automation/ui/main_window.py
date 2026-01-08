@@ -243,7 +243,7 @@ class MainWindow:
         title_label.pack(side=tk.LEFT)
         
         version_badge = tk.Label(title_frame,
-                                text="v4.5",
+                                text="v5.0",
                                 font=('Segoe UI', 8, 'bold'),
                                 bg=self.colors['primary'],
                                 fg='white',

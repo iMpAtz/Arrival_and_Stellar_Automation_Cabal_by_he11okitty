@@ -121,51 +121,32 @@ class HeilAutomation:
             return False
 
     def _check_stop_condition(self):
-        """Check if program should stop based on number comparison (format: X / Y)"""
+        """Stop when detected number from OCR is <= 12"""
         try:
-            # Capture screenshot of OCR area for item count detection
+        # Capture screenshot of OCR area
             screenshot = self.game_connector.capture_area_bitblt(self.ocr_area_count)
             if screenshot is None:
                 return False
 
-            # Extract numbers using optimized OCR config for digits
+            # Extract numbers using OCR
             raw_text = self.ocr_engine.extract_numbers(screenshot)
-            
             print(f"OCR numbers read: {repr(raw_text)}")
-            
-            # Look for pattern "X / Y" where X and Y are numbers
+
             import re
-            match = re.search(r'(\d+)\s*/\s*(\d+)', raw_text)
-            
-            if match:
-                left_num = int(match.group(1))
-                right_num = int(match.group(2))
-                
-                print(f"Number comparison detected: {left_num} / {right_num}")
-                
-                # Stop if left number is less than right number
-                if left_num < right_num:
-                    self.update_status(f"⚠️ Stop condition met: {left_num} < {right_num}")
-                    return True
-            else:
-                # Try alternative pattern - if OCR misreads "/" as nothing, try parsing as consecutive digits
-                # Example: "274" should be read as "2 / 4" (first digit vs last digit)
-                digits_only = re.findall(r'\d+', raw_text)
-                if digits_only:
-                    full_number = digits_only[0]
-                    if len(full_number) >= 2:
-                        # Assume format is "XY" where X is left number and Y is right number
-                        # For multi-digit: take first digit as left, last digit as right
-                        left_num = int(full_number[0])
-                        right_num = int(full_number[-1])
-                        
-                        print(f"Alternative parsing - treating '{full_number}' as {left_num} / {right_num}")
-                        
-                        # Stop if left number is less than right number
-                        if left_num < right_num:
-                            self.update_status(f"⚠️ Stop condition met: {left_num} < {right_num}")
-                            return True
-            
+            numbers = re.findall(r'\d+', raw_text)
+
+            if not numbers:
+                return False
+
+        # Use first detected number group
+            value = int(numbers[0])
+            print(f"OCR value detected: {value}")
+
+        # Stop condition
+            if value <= 12 or value == 274:
+                self.update_status(f"⚠️ Stop condition met: {value} <= 12")
+                return True
+
             return False
         except Exception as e:
             print(f"Stop condition check error: {e}")
