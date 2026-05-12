@@ -195,3 +195,20 @@ class GameConnector:
             pass
 
         return None
+
+    def take_screenshot(self, area=None):
+        """Capture a screenshot of the requested area or full game window."""
+        if not self.game_window:
+            return None
+
+        if area:
+            return self.capture_area_bitblt(area)
+
+        rect = self.get_window_rect()
+        if not rect:
+            return None
+
+        left, top, right, bottom = rect.left, rect.top, rect.right, rect.bottom
+        width = right - left
+        height = bottom - top
+        return self.capture_area_bitblt((left, top, width, height))

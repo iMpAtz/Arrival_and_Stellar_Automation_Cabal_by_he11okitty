@@ -2,20 +2,17 @@
 # Ported from arrival_skill_ocr/automation.py
 
 import time
-import threading
 import re
 from tkinter import messagebox
 from data.arrival_data import get_offensive_skills, get_defensive_skills, get_base_stat_name
+from core.base_automation import BaseAutomation
 
-class ArrivalAutomation:
-    def __init__(self, game_connector, ocr_engine, status_callback=None):
+
+class ArrivalAutomation(BaseAutomation):
+    def __init__(self, game_connector, ocr_engine, status_callback=None, bot_core=None):
         """Initialize arrival skill automation"""
-        self.game_connector = game_connector
-        self.ocr_engine = ocr_engine
-        self.status_callback = status_callback
+        super().__init__(game_connector=game_connector, ocr_engine=ocr_engine, bot_core=bot_core, name="Arrival")
 
-        # Automation state
-        self.running = False
         self.apply_button_coords = None
         self.change_button_coords = None
         self.detection_region = None
@@ -27,11 +24,6 @@ class ArrivalAutomation:
         # Stat tracking
         self.stat_counter = {}
         self.unmapped_ocr_counter = {}
-
-    def update_status(self, message):
-        """Update status via callback if available"""
-        if self.status_callback:
-            self.status_callback(message)
 
     def set_area(self, area):
         """Set the OCR area"""
@@ -73,15 +65,25 @@ class ArrivalAutomation:
 
         self.update_status("Starting arrival skill automation")
 
-        self.running = True
-
-        # Start automation in thread
-        threading.Thread(target=self.reroll_loop, args=(desired_stats,), daemon=True).start()
+        if self.running:
+            return False
+        if not super().start():
+            return False
+        if self.core:
+            self.core.start_watchdog(timeout_sec=12.0, check_interval_sec=1.0)
+            self.core.register_thread(
+                "arrival-automation-loop",
+                self.reroll_loop,
+                daemon=True,
+                args=(desired_stats,),
+            )
         return True
 
     def stop(self):
         """Stop the arrival automation"""
         self.running = False
+        if self.core:
+            self.core.stop()
         self.update_status("Arrival automation stopped")
 
         # Show summary of stats if we have any
@@ -247,25 +249,29 @@ class ArrivalAutomation:
         offensive_base_stats = set(get_base_stat_name(stat) for stat in get_offensive_skills())
         defensive_base_stats = set(get_base_stat_name(stat) for stat in get_defensive_skills())
 
-        # Convert delay from ms to seconds
-        delay_sec = self.delay_ms / 1000.0
-
         # First click the Change button to remove current option
-        self.game_connector.click_at_position(self.change_button_coords)
-        time.sleep(delay_sec)
+        self.protected_click(self.change_button_coords, label="Change")
+        if not self.safe_sleep_ms(self.delay_ms):
+            return
 
         while self.running:
+            if self.stop_event.is_set():
+                break
+            if self.core:
+                self.core.heartbeat("arrival-main-loop")
             iteration_count += 1
 
             # Click Apply button to apply a new option
-            self.game_connector.click_at_position(self.apply_button_coords)
-            time.sleep(delay_sec)  # Wait for game to update
+            self.protected_click(self.apply_button_coords, label="Apply")
+            if not self.safe_sleep_ms(self.delay_ms):
+                break  # Wait for game to update
 
             # Capture screenshot using BitBlt
             screenshot = self.game_connector.capture_area_bitblt(self.area)
             if screenshot is None:
                 self.update_status("Failed to capture screen, retrying...")
-                time.sleep(delay_sec)
+                if not self.safe_sleep_ms(self.delay_ms):
+                    break
                 continue
 
             # Detect text in the screenshot
@@ -292,8 +298,9 @@ class ArrivalAutomation:
                 break
 
             # If desired stats not found, click the Change button to reroll
-            self.game_connector.click_at_position(self.change_button_coords)
-            time.sleep(delay_sec)
+            self.protected_click(self.change_button_coords, label="Change")
+            if not self.safe_sleep_ms(self.delay_ms):
+                break
 
     def check_desired_stats(self, current_stats, desired_stats):
         """

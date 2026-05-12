@@ -1,28 +1,24 @@
 # Auto Mail Receive automation logic
 # Simple 2-position click automation with configurable delay
 
-import time
-import threading
 from tkinter import messagebox
+from core.base_automation import BaseAutomation
 
-class MailAutomation:
-    def __init__(self, game_connector, status_callback=None):
+
+class MailAutomation(BaseAutomation):
+    def __init__(self, game_connector, status_callback=None, bot_core=None):
         """Initialize Mail automation"""
-        self.game_connector = game_connector
-        self.status_callback = status_callback
+        super().__init__(game_connector=game_connector, ocr_engine=None, bot_core=bot_core, name="Mail")
 
         # Automation state
-        self.running = False
-
         # Configuration - 2 click positions
         self.click_coords_1 = None  # Position 1
         self.click_coords_2 = None  # Position 2
         self.delay_ms = 500          # Default delay in milliseconds
 
     def update_status(self, message):
-        """Update status via callback if available"""
-        if self.status_callback:
-            self.status_callback(message)
+        if self.core:
+            self.core.update_status(f"[Mail] {message}")
 
     def set_click_position_1(self, coords):
         """Set click position 1"""
@@ -35,7 +31,6 @@ class MailAutomation:
     def set_delay(self, delay_ms):
         """Set the delay in milliseconds"""
         self.delay_ms = delay_ms
-        print(f"[Mail Automation] Delay updated to: {self.delay_ms} ms ({self.delay_ms / 1000.0} seconds)")
 
     def start(self):
         """Start the Mail automation"""
@@ -54,12 +49,13 @@ class MailAutomation:
                 messagebox.showerror("Error", "Could not connect to the game window. Make sure the game is running.")
                 return False
 
-        self.update_status(f"Starting Auto Mail Receive - delay: {self.delay_ms}ms")
-
-        self.running = True
-
-        # Start automation in thread
-        threading.Thread(target=self._automation_loop, daemon=True).start()
+        if self.running:
+            return False
+        if not super().start():
+            return False
+        if self.core:
+            self.core.start_watchdog(timeout_sec=8.0, check_interval_sec=1.0)
+            self.core.register_thread("mail-automation-loop", self._automation_loop, daemon=True)
         return True
 
     def _automation_loop(self):
@@ -68,38 +64,45 @@ class MailAutomation:
         
         click_count = 0
         delay_sec = self.delay_ms / 1000.0
-        
-        print(f"Mail automation delay set to: {delay_sec} seconds ({self.delay_ms} ms)")
 
         while self.running:
+            if self.stop_event.is_set():
+                break
+            if self.core:
+                self.core.heartbeat("mail-main-loop")
             click_count += 1
 
             # Click position 1
-            if self.game_connector.click_at_position(self.click_coords_1):
+            if self.protected_click(self.click_coords_1, label=f"Position 1 #{click_count}"):
                 self.update_status(f"📬 Click #{click_count}: Position 1")
             else:
                 self.update_status(f"⚠️ Position 1 click failed - retrying...")
 
             # Wait
-            time.sleep(delay_sec)
+            if not self.safe_sleep_ms(self.delay_ms):
+                break
             
             if not self.running:
                 break
 
             # Click position 2
-            if self.game_connector.click_at_position(self.click_coords_2):
+            if self.protected_click(self.click_coords_2, label=f"Position 2 #{click_count}"):
                 self.update_status(f"📭 Click #{click_count}: Position 2")
             else:
                 self.update_status(f"⚠️ Position 2 click failed - retrying...")
 
             # Wait
-            time.sleep(delay_sec)
+            if not self.safe_sleep_ms(self.delay_ms):
+                break
 
         self.update_status(f"Auto Mail Receive stopped - Total cycles: {click_count}")
+        self.running = False
 
     def stop(self):
         """Stop the Mail automation"""
         self.running = False
+        if self.core:
+            self.core.stop()
         self.update_status("Auto Mail Receive stopped")
 
     def emergency_stop(self):

@@ -18,7 +18,8 @@ class StellarTab:
         self.automation = StellarAutomation(
             main_window.game_connector,
             main_window.ocr_engine,
-            main_window.update_status
+            main_window.update_status,
+            main_window.bot_core
         )
 
         # UI state
@@ -199,6 +200,8 @@ class StellarTab:
 
     def set_imprint_button(self):
         """Set the imprint button coordinates"""
+        # Clear any stale stop_event from prior runs so capture can work.
+        self.main_window.bot_core.start()
         # Connect to game if needed
         if not self.main_window.game_connector.is_connected():
             if not self.main_window.game_connector.connect_to_game():
@@ -217,9 +220,10 @@ class StellarTab:
         def capture_click():
             """Capture the mouse click coordinates"""
             try:
-                # Wait for mouse click (exactly as in main.py)
-                mouse.wait(button='left')
-                x, y = mouse.get_position()
+                pos = self.main_window.bot_core.wait_for_mouse_click(mouse, button='left')
+                if not pos:
+                    return
+                x, y = pos
 
                 # Convert to window-relative coordinates
                 rel_x, rel_y, success = self.main_window.game_connector.convert_to_window_coords(x, y)
@@ -239,10 +243,11 @@ class StellarTab:
                 self.main_window.root.config(cursor="")
 
         # Start capture in thread
-        threading.Thread(target=capture_click, daemon=True).start()
+        self.main_window.bot_core.register_thread("stellar-capture-imprint", capture_click, daemon=True)
 
     def define_area(self):
         """Define the OCR area using the shared area selector"""
+        self.main_window.bot_core.start()
         def area_callback(area):
             """Callback when area is selected"""
             self.area = area
@@ -262,7 +267,7 @@ class StellarTab:
     def start_automation(self):
         """Start the stellar automation"""
         # Check if another tool is running
-        if not self.main_window.set_running_tool("Stellar System"):
+        if not self.main_window.set_running_tool("Stellar System", automation=self.automation):
             return
 
         # Get configuration

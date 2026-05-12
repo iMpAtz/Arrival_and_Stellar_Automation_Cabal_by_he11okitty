@@ -5,21 +5,24 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 import keyboard
 import time
+import threading
 from datetime import datetime
 from PIL import Image, ImageTk
 import os
 from core.game_connector import GameConnector
 from core.ocr_engine import OCREngine
+from core.bot_core import BotCore
 from ui.stellar_tab import StellarTab
 from ui.arrival_tab import ArrivalTab
 from ui.heil_tab import HeilTab
 from ui.mail_tab import MailTab
+from ui.pet_tab import PetTab
 
 class MainWindow:
     def __init__(self):
         """Initialize the main tabbed window"""
         self.root = tk.Tk()
-        self.root.title("CABAL Automation Tool - v4.5 By Hello Kitty Gang (Not for selling)")
+        self.root.title("CABAL Automation Tool - v6.0 By Hello Kitty Gang (Not for selling)")
         self.root.geometry("700x600")
         self.root.attributes("-topmost", True)
         self.root.resizable(True, True)
@@ -37,10 +40,8 @@ class MainWindow:
         except Exception as e:
             print(f"Could not set window icon: {e}")
 
-        # Track which tool is currently running (mutual exclusion)
-        self.current_running_tool = None
-        self.start_time = None
-        self.iteration_count = 0
+        # Global runtime controller for all tabs/automations.
+        self.bot_core = BotCore()
 
         # Initialize status variable first
         self.status_var = tk.StringVar(value="Initializing...")
@@ -54,6 +55,7 @@ class MainWindow:
         # Shared components (after status_var is created)
         self.game_connector = GameConnector(self.update_status)
         self.ocr_engine = OCREngine(self.update_status)
+        self.bot_core.set_status_callback(self.update_status)
 
         # Set up emergency kill switch (ESC key)
         keyboard.add_hotkey('esc', self.emergency_stop)
@@ -179,19 +181,21 @@ class MainWindow:
         stellar_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
         heil_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
         mail_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
+        pet_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
 
         # Add tabs to notebook with emoji icons
-        self.notebook.add(arrival_frame, text="  ⚔️  Arrival Skill  ")
-        self.notebook.add(stellar_frame, text="  ⭐  Stellar System  ")
-        self.notebook.add(heil_frame, text="  🎯  Heil Auto  ")
-        self.notebook.add(mail_frame, text="  📧  Mail Receive  ")
+        self.notebook.add(arrival_frame, text="Arrival Skill")
+        self.notebook.add(stellar_frame, text="Stellar System")
+        self.notebook.add(heil_frame, text="Heil Auto")
+        self.notebook.add(mail_frame, text="Mail Receive")
+        self.notebook.add(pet_frame, text="Pet Untrain")
 
         # Create tab instances
         self.arrival_tab = ArrivalTab(arrival_frame, self)
         self.stellar_tab = StellarTab(stellar_frame, self)
         self.heil_tab = HeilTab(heil_frame, self)
         self.mail_tab = MailTab(mail_frame, self)
-
+        self.pet_tab = PetTab(pet_frame, self)
         # Status and Log section
         self.create_status_section(main_frame)
 
@@ -243,7 +247,7 @@ class MainWindow:
         title_label.pack(side=tk.LEFT)
         
         version_badge = tk.Label(title_frame,
-                                text="v5.0",
+                                text="v6.0",
                                 font=('Segoe UI', 8, 'bold'),
                                 bg=self.colors['primary'],
                                 fg='white',
@@ -416,72 +420,61 @@ class MainWindow:
 
     def update_status(self, message):
         """Update the status display with timestamp"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        formatted_message = f"[{timestamp}] {message}"
-        self.status_var.set(formatted_message)
-        print(f"Status: {formatted_message}")  # Also print to console for debugging
-        
-        # Update statistics if automation is running
-        if self.current_running_tool and self.start_time:
-            elapsed = time.time() - self.start_time
-            minutes = int(elapsed // 60)
-            seconds = int(elapsed % 60)
-            stats_text = f"⏱️ Running: {minutes}m {seconds}s | Tool: {self.current_running_tool}"
-            self.stats_text.set(stats_text)
-        elif not self.current_running_tool:
-            self.stats_text.set("Ready to start automation")
+        formatted_message = str(message)
 
-    def set_running_tool(self, tool_name):
+        def ui_update():
+            self.status_var.set(formatted_message)
+            print(f"Status: {formatted_message}")
+            active_tool = self.bot_core.active_tool()
+            if active_tool:
+                started_at = self.bot_core._started_at
+                elapsed = max(0, time.time() - started_at) if started_at else 0
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                stats_text = f"⏱️ Running: {minutes}m {seconds}s | Tool: {active_tool}"
+                self.stats_text.set(stats_text)
+            else:
+                self.stats_text.set("Ready to start automation")
+
+        if threading.current_thread() is threading.main_thread():
+            ui_update()
+        else:
+            self.root.after(0, ui_update)
+
+    def set_running_tool(self, tool_name, automation=None):
         """Set which tool is currently running (mutual exclusion)"""
-        if self.current_running_tool is not None and self.current_running_tool != tool_name:
-            self.update_status(f"❌ Cannot start {tool_name}: {self.current_running_tool} is already running")
-            return False
-
-        self.current_running_tool = tool_name
-        self.start_time = time.time()
-        self.iteration_count = 0
-        
-        # Update stats display
-        self.stats_text.set(f"▶️ Starting {tool_name}...")
-        
-        return True
+        return self.bot_core.begin_run(tool_name, automation=automation)
 
     def clear_running_tool(self):
         """Clear the currently running tool"""
-        if self.current_running_tool and self.start_time:
-            elapsed = time.time() - self.start_time
-            minutes = int(elapsed // 60)
-            seconds = int(elapsed % 60)
-            final_stats = f"⏹️ Stopped {self.current_running_tool} | Total time: {minutes}m {seconds}s"
-            self.stats_text.set(final_stats)
-        
-        self.current_running_tool = None
-        self.start_time = None
+        self.bot_core.end_run()
 
     def emergency_stop(self):
         """Emergency stop triggered by ESC key"""
-        if self.current_running_tool:
-            self.update_status(f"🚨 EMERGENCY STOP - {self.current_running_tool} stopped!")
-
-            # Stop whichever tool is running
-            if self.current_running_tool == "Stellar System":
+        if self.bot_core.is_busy():
+            self.update_status("🚨 EMERGENCY STOP - stopping active automation")
+            active_tool = self.bot_core.active_tool()
+            if active_tool == "Stellar System":
                 self.stellar_tab.emergency_stop()
-            elif self.current_running_tool == "Arrival Skill":
+            elif active_tool == "Arrival Skill":
                 self.arrival_tab.emergency_stop()
-            elif self.current_running_tool == "Auto Mail Receive":
+            elif active_tool == "Auto Mail Receive":
                 self.mail_tab.emergency_stop()
-            elif self.current_running_tool == "Heil Auto":
+            elif active_tool == "Heil Auto":
                 self.heil_tab.emergency_stop()
+            elif active_tool == "Pet Untrain":
+                self.pet_tab.emergency_stop()
 
+            self.bot_core.emergency_stop()
             self.clear_running_tool()
 
-            # Bring window to front
             self.root.lift()
             self.root.attributes('-topmost', True)
             self.root.attributes('-topmost', False)
 
     def on_closing(self):
         """Clean up when closing the application"""
+        self.bot_core.emergency_stop()
         keyboard.unhook_all()  # Remove all keyboard hooks
         self.root.destroy()
 

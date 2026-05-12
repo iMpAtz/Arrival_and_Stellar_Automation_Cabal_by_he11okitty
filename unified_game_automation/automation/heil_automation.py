@@ -2,15 +2,14 @@
 # Advanced click automation with OCR detection for inventory management
 
 import time
-import threading
 from tkinter import messagebox
+from core.base_automation import BaseAutomation
 
-class HeilAutomation:
-    def __init__(self, game_connector, ocr_engine, status_callback=None):
+
+class HeilAutomation(BaseAutomation):
+    def __init__(self, game_connector, ocr_engine, status_callback=None, bot_core=None):
         """Initialize Heil automation"""
-        self.game_connector = game_connector
-        self.ocr_engine = ocr_engine
-        self.status_callback = status_callback
+        super().__init__(game_connector=game_connector, ocr_engine=ocr_engine, bot_core=bot_core, name="Heil")
 
         # Automation state
         self.running = False
@@ -26,11 +25,6 @@ class HeilAutomation:
         self.ocr_area_message = None # OCR area for inventory message
         self.delay_ms = 1000         # Default delay in milliseconds
         self.inventory_check_cooldown = 30  # Cooldown in seconds (1 minute)
-
-    def update_status(self, message):
-        """Update status via callback if available"""
-        if self.status_callback:
-            self.status_callback(message)
 
     def set_click_position_1(self, coords):
         """Set click position 1 (main action)"""
@@ -92,10 +86,13 @@ class HeilAutomation:
 
         self.update_status(f"Starting Heil automation - delay: {self.delay_ms}ms")
 
-        self.running = True
-
-        # Start automation in thread
-        threading.Thread(target=self._automation_loop, daemon=True).start()
+        if self.running:
+            return False
+        if not super().start():
+            return False
+        if self.core:
+            self.core.start_watchdog(timeout_sec=12.0, check_interval_sec=1.0)
+            self.core.register_thread("heil-automation-loop", self._automation_loop, daemon=True)
         return True
 
     def _detect_inventory_message(self):
@@ -156,51 +153,39 @@ class HeilAutomation:
         """Execute inventory management by clicking positions 2, 3, 4, 5"""
         self.update_status("🎒 Inventory full detected! Starting inventory management...")
         
-        # Fixed 1 second delay for inventory positions (2-5)
-        delay_sec = 1.0
-
         # Click position 2
         if not self.running:
             return
         self.update_status("Clicking position 2...")
         self.game_connector.click_at_position(self.click_coords_2)
-        self._interruptible_sleep(delay_sec)
+        self.safe_sleep_ms(1000)
 
         # Click position 3
         if not self.running:
             return
         self.update_status("Clicking position 3...")
         self.game_connector.click_at_position(self.click_coords_3)
-        self._interruptible_sleep(delay_sec)
+        self.safe_sleep_ms(1000)
 
         # Click position 4
         if not self.running:
             return
         self.update_status("Clicking position 4...")
         self.game_connector.click_at_position(self.click_coords_4)
-        self._interruptible_sleep(delay_sec)
+        self.safe_sleep_ms(1000)
 
         # Click position 5
         if not self.running:
             return
         self.update_status("Clicking position 5...")
         self.game_connector.click_at_position(self.click_coords_5)
-        self._interruptible_sleep(delay_sec)
+        self.safe_sleep_ms(1000)
 
         self.update_status("✅ Inventory management complete, resuming main loop...")
 
     def _interruptible_sleep(self, duration):
         """Sleep that can be interrupted by stopping automation"""
-        # Break sleep into small chunks to allow quick response to stop
-        # Use smaller chunk size for very short delays
-        chunk = min(0.05, duration / 2)  # 50ms chunks or half duration, whichever is smaller
-        elapsed = 0
-        
-        while elapsed < duration and self.running:
-            remaining = duration - elapsed
-            sleep_time = min(chunk, remaining)
-            time.sleep(sleep_time)
-            elapsed += sleep_time
+        self.safe_sleep_ms(int(duration * 1000))
 
     def _automation_loop(self):
         """Main automation loop - click position 1, check for inventory message, handle if needed"""
@@ -215,6 +200,10 @@ class HeilAutomation:
         print(f"OCR checks will run every {ocr_check_interval} clicks")
 
         while self.running:
+            if self.stop_event.is_set():
+                break
+            if self.core:
+                self.core.heartbeat("heil-main-loop")
             loop_start = time.time()
             click_count += 1
 
@@ -223,7 +212,8 @@ class HeilAutomation:
                 pass  # Silent fail, don't spam status
             
             # Wait for the specified delay (using interruptible sleep)
-            self._interruptible_sleep(delay_sec)
+            if not self.safe_sleep_ms(self.delay_ms):
+                break
 
             # Check OCR only every N clicks to improve performance
             should_check_ocr = (click_count % ocr_check_interval == 0)
@@ -264,6 +254,8 @@ class HeilAutomation:
     def stop(self):
         """Stop the Heil automation"""
         self.running = False
+        if self.core:
+            self.core.stop()
         self.update_status("Heil automation stopped")
 
     def emergency_stop(self):

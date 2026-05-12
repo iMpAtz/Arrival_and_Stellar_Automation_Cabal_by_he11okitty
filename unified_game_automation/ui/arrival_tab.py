@@ -19,7 +19,8 @@ class ArrivalTab:
         self.automation = ArrivalAutomation(
             main_window.game_connector,
             main_window.ocr_engine,
-            main_window.update_status
+            main_window.update_status,
+            main_window.bot_core
         )
 
         # UI state
