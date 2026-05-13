@@ -17,7 +17,6 @@ from ui.arrival_tab import ArrivalTab
 from ui.heil_tab import HeilTab
 from ui.mail_tab import MailTab
 from ui.pet_tab import PetTab
-
 class MainWindow:
     def __init__(self):
         """Initialize the main tabbed window"""
@@ -32,7 +31,7 @@ class MainWindow:
 
         # Set window icon using Hello Kitty image
         try:
-            icon_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'logo.jpg')
+            icon_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'logo.png')
             if os.path.exists(icon_path):
                 icon_img = Image.open(icon_path)
                 icon_photo = ImageTk.PhotoImage(icon_img)
@@ -222,8 +221,8 @@ class MainWindow:
         
         # Try to load Hello Kitty image
         try:
-            # Look for image at data/images_5.jpg
-            img_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'logo.jpg')
+            # Look for image at data/logo.png
+            img_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'logo.png')
             
             if os.path.exists(img_path):
                 # Load and resize image
