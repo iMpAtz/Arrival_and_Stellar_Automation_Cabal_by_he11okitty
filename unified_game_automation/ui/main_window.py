@@ -97,10 +97,10 @@ class MainWindow:
         style.configure('TNotebook.Tab', 
                        padding=[20, 10],
                        font=('Segoe UI', 10, 'bold'),
-                       background=self.colors['light'])
+                       background=self.colors['light'],)
         style.map('TNotebook.Tab',
                  background=[('selected', self.colors['primary'])],
-                 foreground=[('selected', 'white'), ('!selected', self.colors['text'])])
+                 foreground=[('selected', self.colors['dark']), ('!selected', self.colors['text_light'])])
         
         # Custom button styles
         style.configure('Primary.TButton', 
@@ -358,7 +358,7 @@ class MainWindow:
                 text="Statistics:",
                 font=('Segoe UI', 8),
                 bg='white',
-                fg=self.colors['text_light'],
+                fg=self.colors["text_light"],
                 anchor='w').pack(fill=tk.X)
         
         self.stats_label = tk.Label(stats_text_frame, 
