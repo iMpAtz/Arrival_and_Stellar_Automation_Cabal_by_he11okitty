@@ -32,7 +32,7 @@ class MainWindow:
 
         # Set window icon using Hello Kitty image
         try:
-            icon_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'images_5.jpg')
+            icon_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'logo.jpg')
             if os.path.exists(icon_path):
                 icon_img = Image.open(icon_path)
                 icon_photo = ImageTk.PhotoImage(icon_img)
