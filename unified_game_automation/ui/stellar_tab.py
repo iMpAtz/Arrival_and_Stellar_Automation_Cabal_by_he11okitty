@@ -7,6 +7,9 @@ import threading
 import mouse
 from data.stellar_data import get_stellar_options
 from automation.stellar_automation import StellarAutomation
+import os
+from datetime import datetime
+import sys
 
 class StellarTab:
     def __init__(self, parent_frame, main_window):
@@ -21,6 +24,7 @@ class StellarTab:
             main_window.update_status,
             main_window.bot_core
         )
+        self.automation.set_target_found_callback(self.on_target_found)
 
         # UI state
         self.area = None
@@ -306,6 +310,7 @@ class StellarTab:
         self.btn_stop.config(state=tk.DISABLED)
         self.main_window.clear_running_tool()
         self.main_window.update_status("Stellar automation stopped")
+        self.generate_summary("stopped")
 
     def emergency_stop(self):
         """Emergency stop the automation"""
@@ -313,3 +318,81 @@ class StellarTab:
         self.btn_start.config(state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
         self.main_window.clear_running_tool()
+
+    def on_target_found(self):
+        """Called when target option is found"""
+        self.generate_summary("target_found")
+
+    def generate_summary(self, reason):
+        """Generate and save summary to file"""
+        try:
+            # Get current timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"stellar_summary_{timestamp}.txt"
+            
+            # Create summaries directory if it doesn't exist
+            summaries_dir = os.path.join(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__), 'summaries')
+            os.makedirs(summaries_dir, exist_ok=True)
+            
+            filepath = os.path.join(summaries_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write("STELLAR SYSTEM AUTOMATION SUMMARY\n")
+                f.write("=" * 40 + "\n")
+                f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Reason: {reason}\n")
+                f.write(f"Option: {self.combo_option_name.get()}\n")
+                f.write(f"Min Value: {self.entry_option_min_value.get()}\n")
+                f.write(f"Effect Delay: {self.entry_effect_delay.get()}ms\n")
+                f.write(f"Wrong Read Counter: {self.automation.wrong_read_counter}\n")
+                
+                # Calculate total attempts
+                total_attempts = sum(self.automation.stat_counter.values()) + self.automation.wrong_read_counter
+                if total_attempts > 0:
+                    success_rate = ((total_attempts - self.automation.wrong_read_counter) / total_attempts) * 100
+                    error_rate = (self.automation.wrong_read_counter / total_attempts) * 100
+                    
+                    f.write("\nOVERALL PERCENTAGES:\n")
+                    f.write(f"Success Rate: {success_rate:.1f}%\n")
+                    f.write(f"Error Rate: {error_rate:.1f}%\n")
+                
+                # Show detailed stats for each value found
+                if self.automation.stat_counter:
+                    f.write("\nDETECTED VALUES STATISTICS:\n")
+                    target_value = None
+                    if self.entry_option_min_value.get().isdigit():
+                        target_value = int(self.entry_option_min_value.get())
+                    
+                    for value_str, count in sorted(self.automation.stat_counter.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0, reverse=True):
+                        percentage = (count / total_attempts) * 100 if total_attempts > 0 else 0
+                        status = ""
+                        if target_value is not None and value_str.isdigit():
+                            value_int = int(value_str)
+                            if self.combo_option_name.get().lower() == "penetration":
+                                # For penetration, check if >= target
+                                if value_int >= target_value:
+                                    status = " ✓ TARGET MET"
+                                else:
+                                    status = " ✗ BELOW TARGET"
+                            else:
+                                # For other options, check exact match or >=
+                                if value_int >= target_value:
+                                    status = " ✓ TARGET MET"
+                                else:
+                                    status = " ✗ BELOW TARGET"
+                        
+                        f.write(f"  Value {value_str}: {count} times ({percentage:.1f}%){status}\n")
+                
+                # Show unmapped OCR texts (other options detected)
+                if self.automation.unmapped_ocr_counter:
+                    f.write("\nOTHER DETECTED OPTIONS:\n")
+                    for text_key, count in sorted(self.automation.unmapped_ocr_counter.items(), key=lambda x: x[1], reverse=True):
+                        percentage = (count / total_attempts) * 100 if total_attempts > 0 else 0
+                        f.write(f"  '{text_key}': {count} times ({percentage:.1f}%)\n")
+                
+                f.write("\nAutomation completed.\n")
+            
+            self.main_window.update_status(f"Summary saved to: {filename}")
+            
+        except Exception as e:
+            self.main_window.update_status(f"Failed to save summary: {str(e)}")

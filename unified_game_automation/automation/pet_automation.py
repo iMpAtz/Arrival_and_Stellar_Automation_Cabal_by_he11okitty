@@ -21,6 +21,9 @@ class PetAutomation(BaseAutomation):
             "untrain_btn": None,
             "yes_btn": None,
         }
+        # Stat tracking
+        self.stat_counter = {}
+        self.unmapped_ocr_counter = {}
         self._thread_name = "pet-automation-loop"
 
     def set_area(self, area):
@@ -72,6 +75,11 @@ class PetAutomation(BaseAutomation):
         if not super().start():
             return False
         self.update_status("Automation started")
+        
+        # Reset counters for new run
+        self.stat_counter = {}
+        self.unmapped_ocr_counter = {}
+        
         self.core.start_watchdog(timeout_sec=10.0, check_interval_sec=1.0)
         self.core.register_thread(self._thread_name, self._run_loop, daemon=True)
         return True
@@ -143,6 +151,11 @@ class PetAutomation(BaseAutomation):
         # OCR text is always normalized/lowercased before comparison.
         normalized = self.normalize_text(raw)
         now = time.time()
+
+        # Track all OCR results
+        if normalized.strip():
+            text_key = normalized.strip()[:80]  # Limit length
+            self.unmapped_ocr_counter[text_key] = self.unmapped_ocr_counter.get(text_key, 0) + 1
 
         for target in self.targets:
             # Targets are pre-normalized in set_ocr_search_texts.

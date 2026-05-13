@@ -14,8 +14,10 @@ class StellarAutomation(BaseAutomation):
         self.imprint_button_coords = None
         self.option_name = ""
         self.option_min_value = ""
-        self.delay_ms = 800
-        self.effect_delay_ms = 1000
+        # Stat tracking
+        self.stat_counter = {}
+        self.unmapped_ocr_counter = {}
+        self.target_found_callback = None
 
     def set_area(self, area):
         self.area = area
@@ -25,6 +27,9 @@ class StellarAutomation(BaseAutomation):
 
     def set_effect_delay(self, delay_ms):
         self.effect_delay_ms = max(0, int(delay_ms))
+
+    def set_target_found_callback(self, callback):
+        self.target_found_callback = callback
 
     def start(self, option_name, option_min_value=""):
         if not self.area:
@@ -44,6 +49,11 @@ class StellarAutomation(BaseAutomation):
         self.option_name = re.sub(r"\s+", "", option_name).lower()
         self.option_min_value = re.sub(r"\s+", "", option_min_value).lower()
         self.wrong_read_counter = 0
+        
+        # Reset counters for new run
+        self.stat_counter = {}
+        self.unmapped_ocr_counter = {}
+        
         self.update_status(f"Starting stellar automation - option: {option_name}, min value: {option_min_value}")
 
         self.core.start_watchdog(timeout_sec=12.0, check_interval_sec=1.0)
@@ -106,6 +116,11 @@ class StellarAutomation(BaseAutomation):
             text_compact = re.sub(r"\s+", "", text).lower()
             self.update_status(f"OCR text: {text}")
 
+            # Track the full OCR text for unmapped options
+            if text.strip():
+                text_key = text.strip()[:50]  # Limit length
+                self.unmapped_ocr_counter[text_key] = self.unmapped_ocr_counter.get(text_key, 0) + 1
+
             numbers_found = self.ocr_engine.find_numbers(text)
             if len(numbers_found) != 1:
                 self.wrong_read_counter += 1
@@ -123,6 +138,13 @@ class StellarAutomation(BaseAutomation):
                 return True
 
             self.wrong_read_counter = 0
+            
+            # Track the found value
+            if numbers_found:
+                found_value = numbers_found[0]
+                value_key = f"{found_value}"
+                self.stat_counter[value_key] = self.stat_counter.get(value_key, 0) + 1
+            
             found_option_name = False
             if self.option_name and self.option_name in text_compact:
                 if self.option_name == "penetration":
@@ -144,6 +166,8 @@ class StellarAutomation(BaseAutomation):
             if found_option_name and (not self.option_min_value or found_option_min_value):
                 messagebox.showinfo("Found it!", "Target option found.")
                 self.update_status("Target option found - success!")
+                if self.target_found_callback:
+                    self.target_found_callback()
                 self.stop()
                 return False
 

@@ -38,7 +38,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='HelloK1TTY_Stellar_and_Arrival_Automation_V6.0',
+    name='HelloK1TTY_Automation_V6.0',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -53,5 +53,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     onefile=True,
-    icon=None,
+    icon='logo.ico',
 )

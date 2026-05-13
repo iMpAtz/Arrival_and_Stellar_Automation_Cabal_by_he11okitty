@@ -4,6 +4,9 @@ import mouse
 
 from data.pet_data import get_pet_untrain_steps, get_pet_ocr_options, get_default_pet_delay
 from automation.pet_automation import PetAutomation
+import os
+from datetime import datetime
+import sys
 
 
 class PetTab:
@@ -282,6 +285,7 @@ class PetTab:
         self._running = False
         self.start_btn.config(state=tk.NORMAL)
         self.stop_btn.config(state=tk.DISABLED)
+        self.generate_summary("stopped")
 
     # -------------------------
     def emergency_stop(self):
@@ -316,3 +320,55 @@ class PetTab:
             )
 
         self.main_window.root.after(0, notify)
+        self.generate_summary("target_found", normalized_text)
+
+    def generate_summary(self, reason, ocr_text=""):
+        """Generate and save summary to file"""
+        try:
+            # Get current timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"pet_summary_{timestamp}.txt"
+            
+            # Create summaries directory if it doesn't exist
+            summaries_dir = os.path.join(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__), 'summaries')
+            os.makedirs(summaries_dir, exist_ok=True)
+            
+            filepath = os.path.join(summaries_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write("PET UNTRAIN AUTOMATION SUMMARY\n")
+                f.write("=" * 40 + "\n")
+                f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Reason: {reason}\n")
+                
+                # Selected OCR targets
+                selected_targets = [label for label, var in self.ocr_vars.items() if var.get()]
+                f.write(f"Selected OCR Targets: {', '.join(selected_targets)}\n")
+                f.write(f"Delay: {self.delay_var.get()}ms\n")
+                
+                if ocr_text:
+                    f.write(f"OCR Text Found: {ocr_text}\n")
+                
+                # Calculate percentages if we have multiple targets
+                if len(selected_targets) > 1:
+                    f.write("\nPERCENTAGES:\n")
+                    for target in selected_targets:
+                        if target.lower() in ocr_text.lower():
+                            f.write(f"Match: {target} - 100.0%\n")
+                        else:
+                            f.write(f"No Match: {target} - 0.0%\n")
+                
+                # Show all OCR texts detected
+                if self.automation.unmapped_ocr_counter:
+                    f.write("\nALL DETECTED OCR TEXTS:\n")
+                    total_ocr_reads = sum(self.automation.unmapped_ocr_counter.values())
+                    for text_key, count in sorted(self.automation.unmapped_ocr_counter.items(), key=lambda x: x[1], reverse=True):
+                        percentage = (count / total_ocr_reads) * 100 if total_ocr_reads > 0 else 0
+                        f.write(f"  '{text_key}': {count} times ({percentage:.1f}%)\n")
+                
+                f.write("\nAutomation completed.\n")
+            
+            self.main_window.update_status(f"Summary saved to: {filename}")
+            
+        except Exception as e:
+            self.main_window.update_status(f"Failed to save summary: {str(e)}")

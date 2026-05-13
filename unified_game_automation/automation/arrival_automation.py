@@ -24,6 +24,7 @@ class ArrivalAutomation(BaseAutomation):
         # Stat tracking
         self.stat_counter = {}
         self.unmapped_ocr_counter = {}
+        self.target_found_callback = None
 
     def set_area(self, area):
         """Set the OCR area"""
@@ -41,6 +42,9 @@ class ArrivalAutomation(BaseAutomation):
     def set_delay(self, delay_ms):
         """Set the delay in milliseconds"""
         self.delay_ms = delay_ms
+
+    def set_target_found_callback(self, callback):
+        self.target_found_callback = callback
 
     def start(self, desired_stats=None):
         """Start the arrival automation"""
@@ -330,6 +334,8 @@ class ArrivalAutomation(BaseAutomation):
                         return True
                     elif stat_value >= min_value:
                         self.update_status(f"✅ MATCH: Found {display_stat_name} with value {stat_value} (target: {min_value}+)")
+                        if self.target_found_callback:
+                            self.target_found_callback()
                         return True  # Found one! Stop immediately
 
         # Check all defensive stats (if specified)
@@ -348,6 +354,8 @@ class ArrivalAutomation(BaseAutomation):
                         return True
                     elif stat_value >= min_value:
                         self.update_status(f"✅ MATCH: Found {display_stat_name} with value {stat_value} (target: {min_value}+)")
+                        if self.target_found_callback:
+                            self.target_found_callback()
                         return True  # Found one! Stop immediately
 
         return False  # No match found

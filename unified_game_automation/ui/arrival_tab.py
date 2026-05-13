@@ -8,6 +8,9 @@ import mouse
 import re
 from data.arrival_data import get_offensive_skills, get_defensive_skills, get_stat_variations
 from automation.arrival_automation import ArrivalAutomation
+import os
+from datetime import datetime
+import sys
 
 class ArrivalTab:
     def __init__(self, parent_frame, main_window):
@@ -22,6 +25,7 @@ class ArrivalTab:
             main_window.update_status,
             main_window.bot_core
         )
+        self.automation.set_target_found_callback(self.on_target_found)
 
         # UI state
         self.area = None
@@ -583,6 +587,7 @@ class ArrivalTab:
         self.btn_stop.config(state=tk.DISABLED)
         self.main_window.clear_running_tool()
         self.main_window.update_status("Arrival skill automation stopped")
+        self.generate_summary("stopped")
 
     def emergency_stop(self):
         """Emergency stop the automation"""
@@ -590,3 +595,67 @@ class ArrivalTab:
         self.btn_start.config(state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
         self.main_window.clear_running_tool()
+
+    def on_target_found(self):
+        """Called when target stat is found"""
+        self.generate_summary("target_found")
+
+    def generate_summary(self, reason):
+        """Generate and save summary to file"""
+        try:
+            # Get current timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"arrival_summary_{timestamp}.txt"
+            
+            # Create summaries directory if it doesn't exist
+            summaries_dir = os.path.join(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__), 'summaries')
+            os.makedirs(summaries_dir, exist_ok=True)
+            
+            filepath = os.path.join(summaries_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write("ARRIVAL SKILL AUTOMATION SUMMARY\n")
+                f.write("=" * 40 + "\n")
+                f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Reason: {reason}\n")
+                
+                # Desired stats
+                offensive_stats = []
+                defensive_stats = []
+                
+                if self.off_stat.get():
+                    offensive_stats.append(f"{self.off_stat.get()} (Min: {self.off_var.get()})")
+                if self.off_stat2.get():
+                    offensive_stats.append(f"{self.off_stat2.get()} (Min: {self.off_var2.get()})")
+                if self.off_stat3.get():
+                    offensive_stats.append(f"{self.off_stat3.get()} (Min: {self.off_var3.get()})")
+                if self.def_stat.get():
+                    defensive_stats.append(f"{self.def_stat.get()} (Min: {self.def_var.get()})")
+                if self.def_stat2.get():
+                    defensive_stats.append(f"{self.def_stat2.get()} (Min: {self.def_var2.get()})")
+                
+                f.write(f"Desired Offensive Stats: {', '.join(offensive_stats) if offensive_stats else 'None'}\n")
+                f.write(f"Desired Defensive Stats: {', '.join(defensive_stats) if defensive_stats else 'None'}\n")
+                f.write(f"Delay: {self.delay_var.get()}ms\n")
+                
+                # Stats counter data
+                total_rolls = sum(self.automation.stat_counter.values())
+                if total_rolls > 0:
+                    f.write("\nSTATISTICS ENCOUNTERED:\n")
+                    for stat_key, count in sorted(self.automation.stat_counter.items(), key=lambda x: x[1], reverse=True):
+                        percentage = (count / total_rolls) * 100
+                        f.write(f"  {stat_key}: {count} times ({percentage:.1f}%)\n")
+                
+                # Unmapped OCR data
+                if self.automation.unmapped_ocr_counter:
+                    f.write("\nUNMAPPED OCR DETECTIONS:\n")
+                    for unmapped_key, count in sorted(self.automation.unmapped_ocr_counter.items(), key=lambda x: x[1], reverse=True):
+                        percentage = (count / total_rolls) * 100 if total_rolls > 0 else 0
+                        f.write(f"  {unmapped_key}: {count} times ({percentage:.1f}%)\n")
+                
+                f.write("\nAutomation completed.\n")
+            
+            self.main_window.update_status(f"Summary saved to: {filename}")
+            
+        except Exception as e:
+            self.main_window.update_status(f"Failed to save summary: {str(e)}")
