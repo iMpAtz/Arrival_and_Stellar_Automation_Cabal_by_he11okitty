@@ -223,7 +223,7 @@ class MainWindow:
         # Try to load Hello Kitty image
         try:
             # Look for image at data/images_5.jpg
-            img_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'images_5.jpg')
+            img_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'logo.jpg')
             
             if os.path.exists(img_path):
                 # Load and resize image
