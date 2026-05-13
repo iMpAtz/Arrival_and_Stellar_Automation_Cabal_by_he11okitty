@@ -12,8 +12,6 @@ dist/
 
 *.tif
 *.tiff
-*.png
-*.jpg
 *.jpeg
 *.pdf
 *.txt
