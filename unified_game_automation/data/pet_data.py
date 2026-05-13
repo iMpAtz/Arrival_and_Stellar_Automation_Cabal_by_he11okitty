@@ -50,5 +50,6 @@ def get_pet_ocr_options():
         "Aura Mode Duration Increase",
         "Ignore Resist Critical Rate",
         "Resist unable to move",
-        "Min Damage"
-    ]
+        "Min Damage",
+        "All Skill Amp. UP",
+        "Alz drop amount",    ]
