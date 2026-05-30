@@ -38,7 +38,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='HelloK1TTY_Automation_V6.0',
+    name='HelloK1TTY_Automation_V6.0.2',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -14,6 +14,15 @@ STELLAR_OPTIONS = [
     "PVP Resist All Skill Amp. UP",
     "Normal Attack DMG Up",
     "Cancel Ignore Penetration",
+    "Final Damage increased",
+    "Final Damage decreased",
+    "Max Critical Rate",
+    "Ignore Resist Skill Amp",
+    "Ignore Resist Critical Rate",
+    "Ignore Penetration",
+    "Ignore Resist Critical Damage",
+    "Resist Skill Amp",
+    
 ]
 
 # Exceptions for penetration option (from main.py)

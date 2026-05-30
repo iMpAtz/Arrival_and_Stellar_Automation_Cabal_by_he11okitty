@@ -29,6 +29,8 @@ class StellarTab:
         # UI state
         self.area = None
         self.imprint_button_coords = None
+        self.match_mode_var = tk.StringVar(value="single")
+        self.or_rows = []
 
         # Create UI
         self.create_ui()
@@ -110,10 +112,26 @@ class StellarTab:
         
         option_body = tk.Frame(option_card, bg='white')
         option_body.pack(fill=tk.X, padx=10, pady=5)
-        
+
+        # Match mode
+        logic_frame = tk.Frame(option_body, bg='white')
+        logic_frame.pack(fill=tk.X, pady=(0, 4))
+
+        tk.Label(logic_frame, text="Match mode:", font=('Segoe UI', 8, 'bold'),
+                bg='white', fg=colors['text'], width=10, anchor='w').pack(side=tk.LEFT)
+
+        tk.Radiobutton(logic_frame, text="Single", variable=self.match_mode_var, value="single",
+                       font=('Segoe UI', 8), bg='white', fg=colors['text'], selectcolor='white',
+                       activebackground='white', command=self.update_match_mode).pack(side=tk.LEFT, padx=(5, 2))
+
+        tk.Radiobutton(logic_frame, text="OR", variable=self.match_mode_var, value="or",
+                       font=('Segoe UI', 8), bg='white', fg=colors['text'], selectcolor='white',
+                       activebackground='white', command=self.update_match_mode).pack(side=tk.LEFT, padx=(5, 2))
+
         # Option name
         name_frame = tk.Frame(option_body, bg='white')
         name_frame.pack(fill=tk.X, pady=(0, 4))
+        self.single_option_frame = name_frame
         
         tk.Label(name_frame, text="Option:", font=('Segoe UI', 8, 'bold'), 
                 bg='white', fg=colors['text'], width=10, anchor='w').pack(side=tk.LEFT)
@@ -121,10 +139,28 @@ class StellarTab:
         self.combo_option_name = ttk.Combobox(name_frame, values=get_stellar_options(), 
                                              state="readonly", width=20, font=('Segoe UI', 7))
         self.combo_option_name.pack(side=tk.LEFT, padx=(5, 0))
-        
+
+        self.or_options_frame = tk.Frame(option_body, bg='white')
+        self.or_options_frame.pack(fill=tk.X, pady=(0, 4))
+        self.or_options_frame.pack_forget()
+
+        or_header = tk.Frame(self.or_options_frame, bg='white')
+        or_header.pack(fill=tk.X)
+        tk.Label(or_header, text="OR stat constraints:", font=('Segoe UI', 8, 'bold'),
+                bg='white', fg=colors['text']).pack(side=tk.LEFT)
+        add_constraint_btn = tk.Button(or_header, text="+ Add stat",
+                                      font=('Segoe UI', 8), bg=colors['primary'], fg='white',
+                                      relief='flat', padx=8, pady=2, cursor='hand2',
+                                      command=self.add_or_constraint_row)
+        add_constraint_btn.pack(side=tk.RIGHT)
+
+        self.or_rows_container = tk.Frame(self.or_options_frame, bg='white')
+        self.or_rows_container.pack(fill=tk.X, pady=(4, 0))
+
         # Minimum value
         value_frame = tk.Frame(option_body, bg='white')
         value_frame.pack(fill=tk.X)
+        self.single_min_frame = value_frame
         
         tk.Label(value_frame, text="Min value:", font=('Segoe UI', 8, 'bold'), 
                 bg='white', fg=colors['text'], width=10, anchor='w').pack(side=tk.LEFT)
@@ -268,6 +304,78 @@ class StellarTab:
 
         self.main_window.area_selector.select_area()
 
+    def add_or_constraint_row(self, option_name="", min_value=""):
+        colors = self.main_window.colors if hasattr(self.main_window, 'colors') else {'text': '#212121'}
+        row_frame = tk.Frame(self.or_rows_container, bg='white')
+        row_frame.pack(fill=tk.X, pady=(0, 4))
+
+        option_var = tk.StringVar(value=option_name)
+        option_combo = ttk.Combobox(row_frame, textvariable=option_var,
+                                    values=get_stellar_options(), state="readonly",
+                                    width=20, font=('Segoe UI', 7))
+        option_combo.pack(side=tk.LEFT, padx=(0, 5))
+
+        tk.Label(row_frame, text="Min:", font=('Segoe UI', 8, 'bold'),
+                bg='white', fg=colors['text']).pack(side=tk.LEFT, padx=(0, 4))
+        min_entry = tk.Entry(row_frame, font=('Segoe UI', 8), width=8,
+                             relief='solid', bd=1)
+        min_entry.insert(0, min_value)
+        min_entry.pack(side=tk.LEFT, padx=(0, 5))
+
+        remove_btn = tk.Button(row_frame, text="✕", font=('Segoe UI', 8), bg='white',
+                               fg=colors['text'], relief='flat', padx=4, pady=0,
+                               cursor='hand2', command=lambda: self.remove_or_constraint_row(row_frame))
+        remove_btn.pack(side=tk.LEFT)
+
+        self.or_rows.append({'frame': row_frame, 'combo': option_combo, 'entry': min_entry})
+
+    def remove_or_constraint_row(self, row_frame):
+        for row in self.or_rows:
+            if row['frame'] is row_frame:
+                row_frame.destroy()
+                self.or_rows.remove(row)
+                break
+
+    def get_selected_option_constraints(self):
+        if self.match_mode_var.get() == "or":
+            constraints = []
+            for row in self.or_rows:
+                name = row['combo'].get().strip()
+                min_value = row['entry'].get().strip()
+                if name:
+                    constraints.append({'name': name, 'min_value': min_value})
+            return constraints
+
+        option_name = self.combo_option_name.get().strip()
+        option_min_value = self.entry_option_min_value.get().strip()
+        return [{'name': option_name, 'min_value': option_min_value}] if option_name else []
+
+    def get_selected_option_names(self):
+        return [constraint['name'] for constraint in self.get_selected_option_constraints()]
+
+    def format_selected_constraints(self):
+        constraints = self.get_selected_option_constraints()
+        return ", ".join(
+            f"{constraint['name']} ({constraint['min_value']})" if constraint['min_value'] else constraint['name']
+            for constraint in constraints
+        )
+
+    def update_match_mode(self):
+        if self.match_mode_var.get() == "or":
+            self.single_option_frame.pack_forget()
+            self.single_min_frame.pack_forget()
+            self.or_options_frame.pack(fill=tk.X, pady=(0, 4))
+            if not self.or_rows:
+                self.add_or_constraint_row()
+            self.combo_option_name.config(state=tk.DISABLED)
+            self.entry_option_min_value.config(state="disabled")
+        else:
+            self.or_options_frame.pack_forget()
+            self.single_option_frame.pack(fill=tk.X, pady=(0, 4))
+            self.single_min_frame.pack(fill=tk.X)
+            self.combo_option_name.config(state="readonly")
+            self.entry_option_min_value.config(state="normal")
+
     def start_automation(self):
         """Start the stellar automation"""
         # Check if another tool is running
@@ -275,12 +383,14 @@ class StellarTab:
             return
 
         # Get configuration
-        option_name = self.combo_option_name.get().strip()
-        option_min_value = self.entry_option_min_value.get().strip()
         effect_delay = self.entry_effect_delay.get().strip()
+        constraints = self.get_selected_option_constraints()
 
-        if not option_name:
-            messagebox.showwarning("Missing Option", "Please select an option name.")
+        if not constraints:
+            if self.match_mode_var.get() == "single":
+                messagebox.showwarning("Missing Option", "Please select an option name.")
+            else:
+                messagebox.showwarning("Missing Options", "Please add one or more OR stat constraints.")
             self.main_window.clear_running_tool()
             return
 
@@ -296,7 +406,7 @@ class StellarTab:
         self.automation.set_effect_delay(effect_delay_ms)
 
         # Start automation
-        if self.automation.start(option_name, option_min_value):
+        if self.automation.start(constraints):
             self.btn_start.config(state=tk.DISABLED)
             self.btn_stop.config(state=tk.NORMAL)
             self.main_window.update_status("Stellar automation started")
@@ -341,8 +451,7 @@ class StellarTab:
                 f.write("=" * 40 + "\n")
                 f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 f.write(f"Reason: {reason}\n")
-                f.write(f"Option: {self.combo_option_name.get()}\n")
-                f.write(f"Min Value: {self.entry_option_min_value.get()}\n")
+                f.write(f"Option(s): {self.format_selected_constraints()}\n")
                 f.write(f"Effect Delay: {self.entry_effect_delay.get()}ms\n")
                 f.write(f"Wrong Read Counter: {self.automation.wrong_read_counter}\n")
                 

@@ -12,8 +12,7 @@ class StellarAutomation(BaseAutomation):
         self.wrong_read_counter = 0
         self.area = None
         self.imprint_button_coords = None
-        self.option_name = ""
-        self.option_min_value = ""
+        self.option_constraints = []
         # Stat tracking
         self.stat_counter = {}
         self.unmapped_ocr_counter = {}
@@ -31,7 +30,7 @@ class StellarAutomation(BaseAutomation):
     def set_target_found_callback(self, callback):
         self.target_found_callback = callback
 
-    def start(self, option_name, option_min_value=""):
+    def start(self, option_constraints):
         if not self.area:
             messagebox.showwarning("Missing area definition", "Fix area definition first!")
             return False
@@ -46,15 +45,41 @@ class StellarAutomation(BaseAutomation):
         if not super().start():
             return False
 
-        self.option_name = re.sub(r"\s+", "", option_name).lower()
-        self.option_min_value = re.sub(r"\s+", "", option_min_value).lower()
+        if isinstance(option_constraints, str):
+            option_constraints = [{'name': option_constraints, 'min_value': ''}]
+        elif isinstance(option_constraints, tuple):
+            option_constraints = [{'name': option_constraints[0], 'min_value': option_constraints[1] if len(option_constraints) > 1 else ''}]
+
+        parsed_constraints = []
+        for constraint in option_constraints:
+            if isinstance(constraint, dict):
+                name = constraint.get('name', '')
+                min_value = constraint.get('min_value', '')
+            elif isinstance(constraint, (list, tuple)):
+                name = constraint[0] if len(constraint) > 0 else ''
+                min_value = constraint[1] if len(constraint) > 1 else ''
+            else:
+                name = str(constraint)
+                min_value = ''
+
+            name_normalized = re.sub(r"\s+", "", name).lower()
+            min_normalized = re.sub(r"\s+", "", str(min_value)).lower()
+            if name_normalized:
+                parsed_constraints.append({
+                    'name': name_normalized,
+                    'min_value': min_normalized,
+                    'display_name': name.strip()
+                })
+
+        self.option_constraints = parsed_constraints
         self.wrong_read_counter = 0
         
         # Reset counters for new run
         self.stat_counter = {}
         self.unmapped_ocr_counter = {}
         
-        self.update_status(f"Starting stellar automation - option: {option_name}, min value: {option_min_value}")
+        display_options = ", ".join([c.get('display_name', c['name']) for c in self.option_constraints]) if self.option_constraints else ""
+        self.update_status(f"Starting stellar automation - options: {display_options}")
 
         self.core.start_watchdog(timeout_sec=12.0, check_interval_sec=1.0)
         self.core.register_thread("stellar-automation-loop", self._automation_loop, daemon=True)
@@ -77,6 +102,13 @@ class StellarAutomation(BaseAutomation):
     def numeric_compare(option_min_value_int, text):
         numbers_found = re.findall(r"\d+", text)
         return any(int(num_str) >= option_min_value_int for num_str in numbers_found)
+
+    def min_value_matches(self, min_value, text):
+        if not min_value:
+            return True
+        if min_value.isdigit():
+            return self.numeric_compare(int(min_value), text)
+        return min_value in text
 
     def _automation_loop(self):
         if not self.safe_sleep_ms(3000):
@@ -145,25 +177,24 @@ class StellarAutomation(BaseAutomation):
                 value_key = f"{found_value}"
                 self.stat_counter[value_key] = self.stat_counter.get(value_key, 0) + 1
             
-            found_option_name = False
-            if self.option_name and self.option_name in text_compact:
-                if self.option_name == "penetration":
+            target_found = False
+            for constraint in self.option_constraints:
+                option_name = constraint.get('name', '')
+                min_value = constraint.get('min_value', '')
+                if not option_name:
+                    continue
+                if option_name == "penetration":
                     exceptions = get_penetration_exceptions()
                     if any(exc in text_compact for exc in exceptions):
                         self.update_status("Found 'penetration' but ignoring special exception phrase.")
-                    else:
-                        found_option_name = True
-                else:
-                    found_option_name = True
+                        continue
+                if option_name not in text_compact:
+                    continue
+                if self.min_value_matches(min_value, text_compact):
+                    target_found = True
+                    break
 
-            found_option_min_value = False
-            if self.option_min_value:
-                if self.option_min_value.isdigit():
-                    found_option_min_value = self.numeric_compare(int(self.option_min_value), text_compact)
-                else:
-                    found_option_min_value = self.option_min_value in text_compact
-
-            if found_option_name and (not self.option_min_value or found_option_min_value):
+            if target_found:
                 messagebox.showinfo("Found it!", "Target option found.")
                 self.update_status("Target option found - success!")
                 if self.target_found_callback:

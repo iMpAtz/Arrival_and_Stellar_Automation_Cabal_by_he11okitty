@@ -21,7 +21,7 @@ class MainWindow:
     def __init__(self):
         """Initialize the main tabbed window"""
         self.root = tk.Tk()
-        self.root.title("CABAL Automation Tool - v6.0 By Hello Kitty Gang (Not for selling)")
+        self.root.title("CABAL Automation Tool - v6.0.2 By Hello Kitty Gang (Not for selling)")
         self.root.geometry("700x600")
         self.root.attributes("-topmost", True)
         self.root.resizable(True, True)
@@ -246,7 +246,7 @@ class MainWindow:
         title_label.pack(side=tk.LEFT)
         
         version_badge = tk.Label(title_frame,
-                                text="v6.0",
+                                text="v6.0.2",
                                 font=('Segoe UI', 8, 'bold'),
                                 bg=self.colors['primary'],
                                 fg='white',
