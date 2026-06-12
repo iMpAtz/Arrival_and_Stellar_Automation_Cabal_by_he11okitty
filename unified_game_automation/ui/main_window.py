@@ -58,7 +58,7 @@ class MainWindow:
     def __init__(self):
         """Initialize the main tabbed window"""
         self.root = tk.Tk()
-        self.root.title("CABAL Automation Tool - v6.0.2 By Hello Kitty Gang (Not for selling)")
+        self.root.title("CABAL Automation Tool - v6.0.4 By Hello Kitty Gang (Not for selling)")
         self.root.geometry("600x1000")
         self.root.attributes("-topmost", True)
         self.root.resizable(True, True)
@@ -88,6 +88,7 @@ class MainWindow:
         # Theme and color settings
         self.theme_var = tk.StringVar(value="light")
         self.colors = LIGHT_COLORS
+        self.mini_frame = None
 
         # Configure ttk style
         self.setup_styles()
@@ -209,24 +210,31 @@ class MainWindow:
         current_state = self.root.attributes("-topmost")
         new_state = not current_state
         self.root.attributes("-topmost", new_state)
-        
-        if new_state:
-            self.topmost_btn.config(
-                text="📌 On Top: ON",
-                bg=self.colors['primary'],
-                fg='white',
-                activebackground=self.colors['primary'],
-                activeforeground='white'
-            )
+        self.update_topmost_button_ui(new_state)
+
+    def update_topmost_button_ui(self, is_topmost):
+        """Helper to sync topmost button appearance in both standard and mini layouts"""
+        if is_topmost:
+            for btn_attr in ('topmost_btn', 'mini_topmost_btn'):
+                if hasattr(self, btn_attr) and getattr(self, btn_attr):
+                    getattr(self, btn_attr).config(
+                        text="📌 On Top: ON",
+                        bg=self.colors['primary'],
+                        fg='white',
+                        activebackground=self.colors['primary'],
+                        activeforeground='white'
+                    )
         else:
             off_fg = 'white' if self.theme_var.get() == 'dark' else self.colors['text_light']
-            self.topmost_btn.config(
-                text="📌 On Top: OFF",
-                bg=self.colors['light'],
-                fg=off_fg,
-                activebackground=self.colors['light'],
-                activeforeground=off_fg
-            )
+            for btn_attr in ('topmost_btn', 'mini_topmost_btn'):
+                if hasattr(self, btn_attr) and getattr(self, btn_attr):
+                    getattr(self, btn_attr).config(
+                        text="📌 On Top: OFF",
+                        bg=self.colors['light'],
+                        fg=off_fg,
+                        activebackground=self.colors['light'],
+                        activeforeground=off_fg
+                    )
 
     def toggle_theme(self):
         """Toggle between light and dark themes"""
@@ -239,7 +247,7 @@ class MainWindow:
         """Apply the specified theme to the entire UI"""
         if theme_name == "dark":
             self.colors = DARK_COLORS
-            if hasattr(self, 'theme_btn'):
+            if hasattr(self, 'theme_btn') and self.theme_btn:
                 self.theme_btn.config(
                     text="☀️ Light Mode",
                     bg='#455A64',
@@ -247,11 +255,39 @@ class MainWindow:
                     activebackground='#546E7A',
                     activeforeground='#ECEFF1'
                 )
+            if hasattr(self, 'mini_mode_btn') and self.mini_mode_btn:
+                self.mini_mode_btn.config(
+                    bg='#455A64',
+                    fg='#ECEFF1',
+                    activebackground='#546E7A',
+                    activeforeground='#ECEFF1'
+                )
+            if hasattr(self, 'standard_mode_btn') and self.standard_mode_btn:
+                self.standard_mode_btn.config(
+                    bg='#455A64',
+                    fg='#ECEFF1',
+                    activebackground='#546E7A',
+                    activeforeground='#ECEFF1'
+                )
         else:
             self.colors = LIGHT_COLORS
-            if hasattr(self, 'theme_btn'):
+            if hasattr(self, 'theme_btn') and self.theme_btn:
                 self.theme_btn.config(
                     text="🌙 Dark Mode",
+                    bg='#ECEFF1',
+                    fg='#263238',
+                    activebackground='#CFD8DC',
+                    activeforeground='#263238'
+                )
+            if hasattr(self, 'mini_mode_btn') and self.mini_mode_btn:
+                self.mini_mode_btn.config(
+                    bg='#ECEFF1',
+                    fg='#263238',
+                    activebackground='#CFD8DC',
+                    activeforeground='#263238'
+                )
+            if hasattr(self, 'standard_mode_btn') and self.standard_mode_btn:
+                self.standard_mode_btn.config(
                     bg='#ECEFF1',
                     fg='#263238',
                     activebackground='#CFD8DC',
@@ -266,22 +302,8 @@ class MainWindow:
         self.apply_theme_to_widget(self.root, theme_name)
         
         # Update specific controls that need manual refreshing/overrides
-        if hasattr(self, 'topmost_btn'):
-            is_topmost = self.root.attributes("-topmost")
-            if is_topmost:
-                self.topmost_btn.config(
-                    bg=self.colors['primary'],
-                    fg='white',
-                    activebackground=self.colors['primary'],
-                    activeforeground='white'
-                )
-            else:
-                self.topmost_btn.config(
-                    bg=self.colors['light'],
-                    fg='white' if theme_name == 'dark' else self.colors['text_light'],
-                    activebackground=self.colors['light'],
-                    activeforeground='white' if theme_name == 'dark' else self.colors['text_light']
-                )
+        is_topmost = self.root.attributes("-topmost")
+        self.update_topmost_button_ui(is_topmost)
 
     def apply_theme_to_widget(self, widget, theme_name):
         """Recursively apply the theme colors to standard Tkinter widgets"""
@@ -370,8 +392,10 @@ class MainWindow:
                 
         elif isinstance(widget, tk.Button):
             try:
-                # Exclude theme and topmost buttons as they are managed separately
-                if widget not in (getattr(self, 'theme_btn', None), getattr(self, 'topmost_btn', None)):
+                # Exclude theme, topmost and mini buttons as they are managed separately
+                if widget not in (getattr(self, 'theme_btn', None), getattr(self, 'topmost_btn', None), 
+                                  getattr(self, 'mini_mode_btn', None), getattr(self, 'standard_mode_btn', None),
+                                  getattr(self, 'mini_topmost_btn', None)):
                     curr_bg = widget.cget('bg').lower()
                     curr_fg = widget.cget('fg').lower()
                     
@@ -445,17 +469,17 @@ class MainWindow:
     def create_ui(self):
         """Create the main UI with tabs"""
         # Main frame with modern styling
-        main_frame = tk.Frame(self.root, bg=self.colors['bg'])
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+        self.main_frame = tk.Frame(self.root, bg=self.colors['bg'])
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
 
         # Header section
-        self.create_header(main_frame)
+        self.create_header(self.main_frame)
 
         # Auto-connect to game and show status
         self.auto_connect_to_game()
 
         # Create notebook for tabs with modern styling
-        self.notebook = ttk.Notebook(main_frame)
+        self.notebook = ttk.Notebook(self.main_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
 
         # Create tab frames with card styling
@@ -479,10 +503,10 @@ class MainWindow:
         self.mail_tab = MailTab(mail_frame, self)
         self.pet_tab = PetTab(pet_frame, self)
         # Status and Log section
-        self.create_status_section(main_frame)
+        self.create_status_section(self.main_frame)
 
         # Footer section
-        self.create_footer(main_frame)
+        self.create_footer(self.main_frame)
 
     def create_header(self, parent):
         """Create header section with connection info and toolbar"""
@@ -520,7 +544,7 @@ class MainWindow:
         title_label.pack(side=tk.LEFT)
         
         version_badge = tk.Label(title_frame,
-                                text="v6.0.2",
+                                text="v6.0.4",
                                 font=('Segoe UI', 8, 'bold'),
                                 bg=self.colors['primary'],
                                 fg='white',
@@ -586,6 +610,21 @@ class MainWindow:
                                    activeforeground=self.colors['dark'],
                                    command=self.toggle_theme)
         self.theme_btn.pack(side=tk.LEFT)
+
+        # Mini Mode toggle button
+        self.mini_mode_btn = tk.Button(toolbar_row, 
+                                       text="🗖 Mini Mode",
+                                       font=('Segoe UI', 7, 'bold'),
+                                       bg=self.colors['light'],
+                                       fg=self.colors['dark'],
+                                       relief='flat',
+                                       padx=8,
+                                       pady=2,
+                                       cursor='hand2',
+                                       activebackground=self.colors['light'],
+                                       activeforeground=self.colors['dark'],
+                                       command=self.switch_to_mini_mode)
+        self.mini_mode_btn.pack(side=tk.RIGHT)
         
         # Shadow separator
         shadow_frame = tk.Frame(header_card, bg='#e0e0e0', height=2)
@@ -723,11 +762,17 @@ class MainWindow:
             if hasattr(self, 'connection_indicator'):
                 self.connection_indicator.config(fg=self.colors['success'])
                 self.connection_text.config(text="Connected", fg=self.colors['success'])
+            if hasattr(self, 'mini_connection_indicator'):
+                self.mini_connection_indicator.config(fg=self.colors['success'])
+                self.mini_connection_text.config(text="Connected", fg=self.colors['success'])
         else:
             self.update_status("⚠️ Game not found - make sure the game is running")
             if hasattr(self, 'connection_indicator'):
                 self.connection_indicator.config(fg=self.colors['danger'])
                 self.connection_text.config(text="Disconnected", fg=self.colors['danger'])
+            if hasattr(self, 'mini_connection_indicator'):
+                self.mini_connection_indicator.config(fg=self.colors['danger'])
+                self.mini_connection_text.config(text="Disconnected", fg=self.colors['danger'])
 
     def update_status(self, message):
         """Update the status display with timestamp"""
@@ -735,7 +780,13 @@ class MainWindow:
 
         def ui_update():
             self.status_var.set(formatted_message)
-            print(f"Status: {formatted_message}")
+            try:
+                print(f"Status: {formatted_message}")
+            except UnicodeEncodeError:
+                try:
+                    print(f"Status: {formatted_message.encode('ascii', 'replace').decode('ascii')}")
+                except Exception:
+                    pass
             active_tool = self.bot_core.active_tool()
             if active_tool:
                 started_at = self.bot_core._started_at
@@ -792,3 +843,182 @@ class MainWindow:
     def run(self):
         """Start the application"""
         self.root.mainloop()
+
+    # --- Mini Mode Layout and Switching Logic ---
+    def create_mini_ui(self):
+        """Create the compact Mini Mode UI frame"""
+        if self.mini_frame is not None:
+            return
+        
+        self.mini_frame = tk.Frame(self.root, bg=self.colors['bg'])
+        
+        # Inner container for spacing
+        mini_container = tk.Frame(self.mini_frame, bg=self.colors['bg'])
+        mini_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # --- Row 1: Header (Title, Connection, standard mode toggle) ---
+        header_row = tk.Frame(mini_container, bg=self.colors['bg'])
+        header_row.pack(fill=tk.X, pady=(0, 6))
+        
+        mini_title = tk.Label(header_row, 
+                              text="🐱 CABAL Mini", 
+                              font=('Segoe UI', 10, 'bold'),
+                              bg=self.colors['bg'],
+                              fg=self.colors['primary'])
+        mini_title.pack(side=tk.LEFT)
+        
+        # Mini Connection status
+        self.mini_connection_indicator = tk.Label(header_row, 
+                                             text="●", 
+                                             font=("Arial", 12),
+                                             bg=self.colors['bg'],
+                                             fg='#9E9E9E')
+        self.mini_connection_indicator.pack(side=tk.LEFT, padx=(8, 2))
+        
+        self.mini_connection_text = tk.Label(header_row,
+                                        text="Checking...",
+                                        font=('Segoe UI', 8, 'bold'),
+                                        bg=self.colors['bg'],
+                                        fg=self.colors['text_light'])
+        self.mini_connection_text.pack(side=tk.LEFT)
+        
+        # Standard mode button
+        self.standard_mode_btn = tk.Button(header_row, 
+                                           text="🗖 Standard Mode",
+                                           font=('Segoe UI', 7, 'bold'),
+                                           bg=self.colors['light'],
+                                           fg=self.colors['dark'],
+                                           relief='flat',
+                                           padx=6,
+                                           pady=2,
+                                           cursor='hand2',
+                                           activebackground=self.colors['light'],
+                                           activeforeground=self.colors['dark'],
+                                           command=self.switch_to_standard_mode)
+        self.standard_mode_btn.pack(side=tk.RIGHT)
+        
+        # --- Row 2: Status & Stats Card ---
+        card_frame = tk.Frame(mini_container, bg=self.colors['card_bg'], relief='flat', bd=0)
+        card_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        
+        # Add thin border to match cards
+        border_frame = tk.Frame(card_frame, bg=self.colors['border'], height=1)
+        border_frame.pack(fill=tk.X)
+        
+        status_inner = tk.Frame(card_frame, bg=self.colors['card_bg'], padx=8, pady=6)
+        status_inner.pack(fill=tk.BOTH, expand=True)
+        
+        # Compact Status display
+        status_line = tk.Frame(status_inner, bg=self.colors['card_bg'])
+        status_line.pack(fill=tk.X)
+        
+        tk.Label(status_line, 
+                 text="Status:", 
+                 font=('Segoe UI', 8, 'bold'),
+                 bg=self.colors['card_bg'],
+                 fg=self.colors['text_light']).pack(side=tk.LEFT)
+        
+        self.mini_status_lbl = tk.Label(status_line, 
+                                       textvariable=self.status_var,
+                                       font=('Segoe UI', 8),
+                                       bg=self.colors['card_bg'],
+                                       fg=self.colors['info'],
+                                       anchor='w',
+                                       justify='left')
+        self.mini_status_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        # Compact Stats display
+        stats_line = tk.Frame(status_inner, bg=self.colors['card_bg'])
+        stats_line.pack(fill=tk.X, pady=(4, 0))
+        
+        tk.Label(stats_line, 
+                 text="Stats:", 
+                 font=('Segoe UI', 8, 'bold'),
+                 bg=self.colors['card_bg'],
+                 fg=self.colors['text_light']).pack(side=tk.LEFT)
+        
+        self.mini_stats_lbl = tk.Label(stats_line, 
+                                      textvariable=self.stats_text,
+                                      font=('Segoe UI', 8),
+                                      bg=self.colors['card_bg'],
+                                      fg=self.colors['text'],
+                                      anchor='w',
+                                      justify='left')
+        self.mini_stats_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        # --- Row 3: Action Buttons (Emergency Stop, On Top) ---
+        actions_row = tk.Frame(mini_container, bg=self.colors['bg'])
+        actions_row.pack(fill=tk.X)
+        
+        # Mini On Top button
+        self.mini_topmost_btn = tk.Button(actions_row, 
+                                          text="📌 On Top: ON",
+                                          font=('Segoe UI', 7, 'bold'),
+                                          bg=self.colors['primary'],
+                                          fg='white',
+                                          relief='flat',
+                                          padx=8,
+                                          pady=2,
+                                          cursor='hand2',
+                                          activebackground=self.colors['primary'],
+                                          activeforeground='white',
+                                          command=self.toggle_always_on_top)
+        self.mini_topmost_btn.pack(side=tk.LEFT)
+        
+        # Mini Emergency Stop button (Big Red)
+        self.mini_stop_btn = tk.Button(actions_row, 
+                                       text="🛑 Emergency Stop (ESC)",
+                                       font=('Segoe UI', 8, 'bold'),
+                                       bg=self.colors['danger'],
+                                       fg='white',
+                                       relief='flat',
+                                       padx=12,
+                                       pady=2,
+                                       cursor='hand2',
+                                       activebackground=self.colors['danger'],
+                                       activeforeground='white',
+                                       command=self.emergency_stop)
+        self.mini_stop_btn.pack(side=tk.RIGHT)
+
+    def switch_to_mini_mode(self):
+        """Switch the window layout to compact Mini Mode"""
+        # Save standard geometry
+        self.normal_geometry = self.root.geometry()
+        
+        # Hide standard interface
+        self.main_frame.pack_forget()
+        
+        # Create mini UI if not exists
+        if self.mini_frame is None:
+            self.create_mini_ui()
+            # Sync topmost state of the button
+            is_topmost = self.root.attributes("-topmost")
+            self.update_topmost_button_ui(is_topmost)
+            # Apply current theme to new mini UI widgets
+            self.apply_theme_to_widget(self.mini_frame, self.theme_var.get())
+        
+        # Show mini UI
+        self.mini_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Adjust window constraints
+        self.root.minsize(380, 160)
+        self.root.geometry("380x160")
+        
+        # Trigger game connector connection check to populate mini connection status
+        self.auto_connect_to_game()
+
+    def switch_to_standard_mode(self):
+        """Switch the window layout back to Standard Mode"""
+        # Hide mini interface
+        if self.mini_frame:
+            self.mini_frame.pack_forget()
+            
+        # Show standard interface
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+        
+        # Restore window constraints
+        self.root.minsize(700, 800)
+        self.root.geometry(self.normal_geometry)
+        
+        # Trigger game connector connection check to populate standard connection status
+        self.auto_connect_to_game()
