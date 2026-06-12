@@ -31,11 +31,21 @@ class PetAutomation(BaseAutomation):
 
     def set_ocr_search_texts(self, targets):
         # Store normalized lowercase targets once to avoid inconsistent matching.
-        self.targets = [
-            self.normalize_text(target)
-            for target in (targets or [])
-            if self.normalize_text(target)
-        ]
+        # Keep stronger (longer) targets first so exact matches are preferred.
+        normalized_targets = []
+        for target in (targets or []):
+            normalized = self.normalize_text(target)
+            if not normalized or normalized in normalized_targets:
+                continue
+            normalized_targets.append(normalized)
+            words = normalized.split()
+            if len(words) > 3:
+                fallback = " ".join(words[:-1])
+                if fallback and fallback not in normalized_targets:
+                    normalized_targets.append(fallback)
+
+        # Prefer longer phrases first to avoid shorter substrings matching too early.
+        self.targets = sorted(normalized_targets, key=lambda s: (-len(s), s))
 
     def set_pet_training_coords(self, coords):
         self.coords["pet_training"] = coords
@@ -135,6 +145,20 @@ class PetAutomation(BaseAutomation):
         finally:
             self.running = False
 
+    def _ocr_contains_ignore_variants(self, normalized, suffix):
+        if not suffix:
+            return False
+        return any(
+            variant in normalized
+            for variant in [
+                f"ignore {suffix}",
+                f"nore {suffix}",
+                f"gnore {suffix}",
+                f"bnor {suffix}",
+                f"nor {suffix}",
+            ]
+        )
+
     def _ocr_match_pet_targets(self):
         """
         Pet-specific OCR matcher.
@@ -169,6 +193,32 @@ class PetAutomation(BaseAutomation):
                 if "ignore penetration" in normalized:
                     continue
                 if "penetration" in normalized:
+                    if now - self._last_ocr_hit_at < self._ocr_debounce_sec:
+                        return False, normalized
+                    self._last_ocr_hit_at = now
+                    return True, normalized
+                continue
+
+            # 'Resist Critical Damage' should not trigger when OCR reads
+            # 'Ignore Resist Critical Damage'.
+            if target_norm == "resist critical damage":
+                if self._ocr_contains_ignore_variants(normalized, "resist critical damage"):
+                    continue
+
+            if target_norm == "ignore resist critical damage":
+                if self._ocr_contains_ignore_variants(normalized, "resist critical damage"):
+                    if now - self._last_ocr_hit_at < self._ocr_debounce_sec:
+                        return False, normalized
+                    self._last_ocr_hit_at = now
+                    return True, normalized
+                continue
+
+            if target_norm == "resist critical rate":
+                if self._ocr_contains_ignore_variants(normalized, "resist critical rate"):
+                    continue
+
+            if target_norm == "ignore resist critical rate":
+                if self._ocr_contains_ignore_variants(normalized, "resist critical rate"):
                     if now - self._last_ocr_hit_at < self._ocr_debounce_sec:
                         return False, normalized
                     self._last_ocr_hit_at = now

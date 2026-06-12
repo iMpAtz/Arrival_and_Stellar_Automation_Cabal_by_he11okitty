@@ -38,22 +38,22 @@ class PetTab:
         main.pack(fill=tk.BOTH, expand=True)
 
         # Intro card (same style direction as other tabs)
-        intro_card = tk.Frame(main, bg="#E3F2FD", relief="flat", bd=0)
+        intro_card = tk.Frame(main, bg=colors["intro_bg"], relief="flat", bd=0)
         intro_card.pack(fill=tk.X, padx=0, pady=(0, 6))
 
-        intro_inner = tk.Frame(intro_card, bg="#E3F2FD")
+        intro_inner = tk.Frame(intro_card, bg=colors["intro_bg"])
         intro_inner.pack(fill=tk.X, padx=10, pady=6)
 
-        tk.Label(intro_inner, text="🐾", font=("Segoe UI", 12), bg="#E3F2FD").pack(side=tk.LEFT, padx=(0, 6))
+        tk.Label(intro_inner, text="🐾", font=("Segoe UI", 12), bg=colors["intro_bg"]).pack(side=tk.LEFT, padx=(0, 6))
 
-        title_wrap = tk.Frame(intro_inner, bg="#E3F2FD")
+        title_wrap = tk.Frame(intro_inner, bg=colors["intro_bg"])
         title_wrap.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         tk.Label(
             title_wrap,
             text="PET TRAINING - Untrain Automation",
             font=("Segoe UI", 9, "bold"),
-            bg="#E3F2FD",
+            bg=colors["intro_bg"],
             fg=colors["text"],
             anchor="w"
         ).pack(fill=tk.X)
@@ -61,7 +61,7 @@ class PetTab:
             title_wrap,
             text="1) Set Positions  •  2) Define OCR Area  •  3) Select OCR Targets  •  4) Start",
             font=("Segoe UI", 7),
-            bg="#E3F2FD",
+            bg=colors["intro_bg"],
             fg=colors["text_light"],
             anchor="w"
         ).pack(fill=tk.X, pady=(1, 0))
@@ -100,8 +100,13 @@ class PetTab:
             btn = tk.Button(
                 row,
                 text="Set",
+                font=('Segoe UI', 7, 'bold'),
                 bg=colors['primary'],
                 fg="white",
+                relief='flat',
+                padx=10,
+                pady=3,
+                cursor='hand2',
                 command=lambda i=i: self.set_pos(i)
             )
             btn.pack(side=tk.RIGHT)
@@ -166,9 +171,14 @@ class PetTab:
 
         area_btn = tk.Button(
             ocr_card,
-            text="Define OCR Area",
+            text="📐 Define OCR Area",
+            font=('Segoe UI', 8, 'bold'),
             bg=colors['primary'],
             fg="white",
+            relief='flat',
+            padx=20,
+            pady=6,
+            cursor='hand2',
             command=self.define_area
         )
         area_btn.pack(padx=10, pady=(0, 8), anchor="e")
@@ -192,18 +202,28 @@ class PetTab:
 
         self.start_btn = tk.Button(
             control,
-            text="▶ START",
-            bg="green",
+            text="▶️ START",
+            font=('Segoe UI', 9, 'bold'),
+            bg=colors['success'],
             fg="white",
+            relief='flat',
+            padx=30,
+            pady=8,
+            cursor='hand2',
             command=self.start
         )
-        self.start_btn.pack(side=tk.LEFT, padx=5)
+        self.start_btn.pack(side=tk.LEFT, padx=(0, 6))
 
         self.stop_btn = tk.Button(
             control,
-            text="⛔ STOP",
-            bg="red",
+            text="⏹️ STOP",
+            font=('Segoe UI', 9, 'bold'),
+            bg=colors['danger'],
             fg="white",
+            relief='flat',
+            padx=30,
+            pady=8,
+            cursor='hand2',
             state=tk.DISABLED,
             command=self.stop
         )

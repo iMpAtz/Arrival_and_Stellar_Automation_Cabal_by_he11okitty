@@ -17,12 +17,49 @@ from ui.arrival_tab import ArrivalTab
 from ui.heil_tab import HeilTab
 from ui.mail_tab import MailTab
 from ui.pet_tab import PetTab
+# Color Palettes for Light and Dark themes
+LIGHT_COLORS = {
+    'primary': '#2196F3',
+    'success': '#4CAF50',
+    'danger': '#f44336',
+    'warning': '#FF9800',
+    'info': '#00BCD4',
+    'dark': '#263238',
+    'light': '#ECEFF1',
+    'bg': '#FAFAFA',
+    'card_bg': '#FFFFFF',
+    'text': '#212121',
+    'text_light': '#546E7A',
+    'border': '#E0E0E0',
+    'entry_bg': '#FFFFFF',
+    'entry_fg': '#212121',
+    'intro_bg': '#E3F2FD',
+}
+
+DARK_COLORS = {
+    'primary': '#1E88E5',
+    'success': '#43A047',
+    'danger': '#E53935',
+    'warning': '#FB8C00',
+    'info': '#00ACC1',
+    'dark': '#ECEFF1',
+    'light': '#455A64',
+    'bg': '#121212',
+    'card_bg': '#1E1E1E',
+    'text': '#E0E0E0',
+    'text_light': '#B0BEC5',
+    'border': '#37474F',
+    'entry_bg': '#2C2C2C',
+    'entry_fg': '#E0E0E0',
+    'intro_bg': '#1A237E',
+}
+
 class MainWindow:
     def __init__(self):
         """Initialize the main tabbed window"""
         self.root = tk.Tk()
         self.root.title("CABAL Automation Tool - v6.0.2 By Hello Kitty Gang (Not for selling)")
-        self.root.geometry("700x600")
+        self.root.geometry("600x1000")
         self.root.attributes("-topmost", True)
         self.root.resizable(True, True)
         self.root.minsize(700, 800)
@@ -47,6 +84,10 @@ class MainWindow:
         
         # Statistics variables
         self.stats_text = tk.StringVar(value="Ready")
+
+        # Theme and color settings
+        self.theme_var = tk.StringVar(value="light")
+        self.colors = LIGHT_COLORS
 
         # Configure ttk style
         self.setup_styles()
@@ -78,29 +119,20 @@ class MainWindow:
         elif 'alt' in available_themes:
             style.theme_use('alt')
         
-        # Modern color scheme
-        self.colors = {
-            'primary': '#2196F3',      # Blue
-            'success': '#4CAF50',      # Green
-            'danger': '#f44336',       # Red
-            'warning': '#FF9800',      # Orange
-            'info': '#00BCD4',         # Cyan
-            'dark': '#263238',         # Dark Blue Gray
-            'light': '#ECEFF1',        # Light Gray
-            'bg': '#FAFAFA',           # Background
-            'text': '#212121',         # Text
-            'text_light': '#757575'    # Light Text
-        }
+        # Ensure self.colors is initialized
+        if not hasattr(self, 'colors'):
+            self.colors = LIGHT_COLORS
         
         # Configure notebook (tabs)
         style.configure('TNotebook', background=self.colors['bg'], borderwidth=0)
         style.configure('TNotebook.Tab', 
                        padding=[20, 10],
                        font=('Segoe UI', 10, 'bold'),
-                       background=self.colors['light'],)
+                       background=self.colors['light'],
+                       foreground=self.colors['text_light'])
         style.map('TNotebook.Tab',
-                 background=[('selected', self.colors['primary'])],
-                 foreground=[('selected', self.colors['dark']), ('!selected', self.colors['text_light'])])
+                 background=[('selected', self.colors['primary']), ('!selected', self.colors['light'])],
+                 foreground=[('selected', '#000000'), ('!selected', self.colors['text_light'])])
         
         # Custom button styles
         style.configure('Primary.TButton', 
@@ -124,7 +156,7 @@ class MainWindow:
                  foreground=[('!active', self.colors['danger'])])
         
         # Frame styles
-        style.configure('Card.TFrame', background='white', relief='flat', borderwidth=1)
+        style.configure('Card.TFrame', background=self.colors['card_bg'], relief='flat', borderwidth=1)
         style.configure('TFrame', background=self.colors['bg'])
         
         # Label styles
@@ -140,24 +172,275 @@ class MainWindow:
         
         style.configure('Status.TLabel', 
                        font=('Segoe UI', 9),
-                       background='white',
+                       background=self.colors['card_bg'],
                        foreground=self.colors['info'])
         
         style.configure('Heading.TLabel',
                        font=('Segoe UI', 10, 'bold'),
-                       background='white',
+                       background=self.colors['card_bg'],
                        foreground=self.colors['dark'])
         
         # LabelFrame style
         style.configure('Card.TLabelframe', 
-                       background='white',
+                       background=self.colors['card_bg'],
                        relief='flat',
                        borderwidth=2,
                        padding=15)
         style.configure('Card.TLabelframe.Label',
                        font=('Segoe UI', 11, 'bold'),
-                       background='white',
+                       background=self.colors['card_bg'],
                        foreground=self.colors['dark'])
+
+        # Combobox style
+        style.configure('TCombobox', 
+                        fieldbackground=self.colors['entry_bg'],
+                        background=self.colors['light'],
+                        foreground=self.colors['entry_fg'],
+                        arrowcolor=self.colors['text'])
+        
+        # Configure Combobox popdown listbox style via option_add
+        self.root.option_add('*TCombobox*Listbox.background', self.colors['entry_bg'])
+        self.root.option_add('*TCombobox*Listbox.foreground', self.colors['entry_fg'])
+        self.root.option_add('*TCombobox*Listbox.selectBackground', self.colors['primary'])
+        self.root.option_add('*TCombobox*Listbox.selectForeground', '#FFFFFF')
+
+    def toggle_always_on_top(self):
+        """Toggle the Always on Top attribute of the main window"""
+        current_state = self.root.attributes("-topmost")
+        new_state = not current_state
+        self.root.attributes("-topmost", new_state)
+        
+        if new_state:
+            self.topmost_btn.config(
+                text="📌 On Top: ON",
+                bg=self.colors['primary'],
+                fg='white',
+                activebackground=self.colors['primary'],
+                activeforeground='white'
+            )
+        else:
+            off_fg = 'white' if self.theme_var.get() == 'dark' else self.colors['text_light']
+            self.topmost_btn.config(
+                text="📌 On Top: OFF",
+                bg=self.colors['light'],
+                fg=off_fg,
+                activebackground=self.colors['light'],
+                activeforeground=off_fg
+            )
+
+    def toggle_theme(self):
+        """Toggle between light and dark themes"""
+        current_theme = self.theme_var.get()
+        new_theme = "dark" if current_theme == "light" else "light"
+        self.theme_var.set(new_theme)
+        self.apply_theme(new_theme)
+
+    def apply_theme(self, theme_name):
+        """Apply the specified theme to the entire UI"""
+        if theme_name == "dark":
+            self.colors = DARK_COLORS
+            if hasattr(self, 'theme_btn'):
+                self.theme_btn.config(
+                    text="☀️ Light Mode",
+                    bg='#455A64',
+                    fg='#ECEFF1',
+                    activebackground='#546E7A',
+                    activeforeground='#ECEFF1'
+                )
+        else:
+            self.colors = LIGHT_COLORS
+            if hasattr(self, 'theme_btn'):
+                self.theme_btn.config(
+                    text="🌙 Dark Mode",
+                    bg='#ECEFF1',
+                    fg='#263238',
+                    activebackground='#CFD8DC',
+                    activeforeground='#263238'
+                )
+
+        # Update root and styles
+        self.root.configure(bg=self.colors['bg'])
+        self.setup_styles()
+        
+        # Traverse and update all widgets in the window
+        self.apply_theme_to_widget(self.root, theme_name)
+        
+        # Update specific controls that need manual refreshing/overrides
+        if hasattr(self, 'topmost_btn'):
+            is_topmost = self.root.attributes("-topmost")
+            if is_topmost:
+                self.topmost_btn.config(
+                    bg=self.colors['primary'],
+                    fg='white',
+                    activebackground=self.colors['primary'],
+                    activeforeground='white'
+                )
+            else:
+                self.topmost_btn.config(
+                    bg=self.colors['light'],
+                    fg='white' if theme_name == 'dark' else self.colors['text_light'],
+                    activebackground=self.colors['light'],
+                    activeforeground='white' if theme_name == 'dark' else self.colors['text_light']
+                )
+
+    def apply_theme_to_widget(self, widget, theme_name):
+        """Recursively apply the theme colors to standard Tkinter widgets"""
+        colors = self.colors
+        
+        # Skip some widgets that shouldn't be recursed or processed if destroyed
+        try:
+            if not widget.winfo_exists():
+                return
+        except Exception:
+            return
+
+        # Determine the widget's role and update its color accordingly
+        if isinstance(widget, tk.Frame):
+            try:
+                curr_bg = widget.cget('bg').lower()
+                if curr_bg in ('white', '#ffffff', '#1e1e1e', 'systemwindow', 'systembuttonface'):
+                    widget.configure(bg=colors['card_bg'])
+                elif curr_bg in ('#e3f2fd', '#1a237e', '#0d47a1'):
+                    widget.configure(bg=colors['intro_bg'])
+                elif curr_bg in ('#fafafa', '#f0f0f0', '#121212', '#eceff1', '#2c2c2c'):
+                    if widget == self.root or widget.master == self.root:
+                        widget.configure(bg=colors['bg'])
+                    else:
+                        widget.configure(bg=colors['card_bg'] if theme_name == 'dark' else 'white')
+                elif curr_bg == '#e0e0e0':
+                    widget.configure(bg=colors['border'])
+            except Exception:
+                pass
+                
+        elif isinstance(widget, tk.Label):
+            try:
+                curr_bg = widget.cget('bg').lower()
+                curr_fg = widget.cget('fg').lower()
+                
+                # Track if bg is intro-style
+                is_intro_bg = curr_bg in ('#e3f2fd', '#1a237e', '#0d47a1')
+                
+                # Update background
+                if curr_bg in ('white', '#ffffff', '#1e1e1e', 'systemwindow', 'systembuttonface'):
+                    widget.configure(bg=colors['card_bg'])
+                elif is_intro_bg:
+                    widget.configure(bg=colors['intro_bg'])
+                elif curr_bg in ('#fafafa', '#f0f0f0', '#121212'):
+                    widget.configure(bg=colors['bg'])
+                
+                # Update foreground
+                fg_updated = False
+                if curr_fg in ('#212121', 'black', '#e0e0e0', 'systemwindowtext'):
+                    widget.configure(fg=colors['text'])
+                    fg_updated = True
+                elif curr_fg in ('#757575', '#b0bec5', '#546e7a'):
+                    widget.configure(fg=colors['text_light'])
+                    fg_updated = True
+                elif curr_fg in ('#263238', '#eceff1'):
+                    widget.configure(fg=colors['dark'])
+                    fg_updated = True
+                elif curr_fg in ('#2196f3', '#1e88e5', '#3b82f6'):
+                    widget.configure(fg=colors['primary'])
+                    fg_updated = True
+                elif curr_fg in ('#4caf50', '#43a047'):
+                    widget.configure(fg=colors['success'])
+                    fg_updated = True
+                elif curr_fg in ('#f44336', '#e53935'):
+                    widget.configure(fg=colors['danger'])
+                    fg_updated = True
+                
+                # Fallback: if fg wasn't matched and label is on intro/card bg, force update
+                if not fg_updated and is_intro_bg:
+                    # Check font to decide text vs text_light
+                    try:
+                        font = widget.cget('font')
+                        if 'bold' in str(font).lower():
+                            widget.configure(fg=colors['text'])
+                        else:
+                            widget.configure(fg=colors['text_light'])
+                    except Exception:
+                        widget.configure(fg=colors['text_light'])
+                elif not fg_updated:
+                    # Generic fallback for card-bg labels
+                    new_bg = widget.cget('bg').lower()
+                    if new_bg == colors['card_bg'].lower() or new_bg == colors['bg'].lower():
+                        widget.configure(fg=colors['text'])
+            except Exception:
+                pass
+                
+        elif isinstance(widget, tk.Button):
+            try:
+                # Exclude theme and topmost buttons as they are managed separately
+                if widget not in (getattr(self, 'theme_btn', None), getattr(self, 'topmost_btn', None)):
+                    curr_bg = widget.cget('bg').lower()
+                    curr_fg = widget.cget('fg').lower()
+                    
+                    # Map button backgrounds
+                    if curr_bg in ('#2196f3', '#1e88e5', '#3b82f6'):
+                        widget.configure(bg=colors['primary'], activebackground=colors['primary'])
+                    elif curr_bg in ('#4caf50', '#43a047', 'green'):
+                        widget.configure(bg=colors['success'], activebackground=colors['success'])
+                    elif curr_bg in ('#f44336', '#e53935', 'red'):
+                        widget.configure(bg=colors['danger'], activebackground=colors['danger'])
+                    elif curr_bg in ('#ff9800', '#f57c00'):
+                        widget.configure(bg=colors['warning'], activebackground=colors['warning'])
+                    elif curr_bg in ('#9c27b0', '#8e24aa'):
+                        widget.configure(bg='#8E24AA' if theme_name == 'dark' else '#9C27B0', activebackground='#8E24AA' if theme_name == 'dark' else '#9C27B0')
+                    elif curr_bg in ('white', '#ffffff', '#2c2c2c', '#1e1e1e', 'systemwindow', 'systembuttonface'):
+                        widget.configure(bg=colors['card_bg'], fg=colors['text'], activebackground=colors['card_bg'], activeforeground=colors['text'])
+                    
+                    # Map button text color
+                    if curr_fg in ('white', '#ffffff'):
+                        widget.configure(fg='white', activeforeground='white')
+                    elif curr_fg in ('#212121', 'black', '#e0e0e0', 'systemwindowtext'):
+                        widget.configure(fg=colors['text'], activeforeground=colors['text'])
+            except Exception:
+                pass
+
+        elif isinstance(widget, tk.Entry):
+            try:
+                widget.configure(bg=colors['entry_bg'], fg=colors['entry_fg'], insertbackground=colors['entry_fg'])
+            except Exception:
+                pass
+            
+        elif isinstance(widget, tk.Radiobutton):
+            try:
+                widget.configure(
+                    bg=colors['card_bg'] if theme_name == 'dark' else 'white',
+                    fg=colors['text'],
+                    selectcolor=colors['card_bg'] if theme_name == 'dark' else 'white',
+                    activebackground=colors['card_bg'] if theme_name == 'dark' else 'white',
+                    activeforeground=colors['text']
+                )
+            except Exception:
+                pass
+            
+        elif isinstance(widget, tk.Checkbutton):
+            try:
+                widget.configure(
+                    bg=colors['card_bg'] if theme_name == 'dark' else 'white',
+                    fg=colors['text'],
+                    selectcolor=colors['card_bg'] if theme_name == 'dark' else 'white',
+                    activebackground=colors['card_bg'] if theme_name == 'dark' else 'white',
+                    activeforeground=colors['text']
+                )
+            except Exception:
+                pass
+
+        elif isinstance(widget, tk.Canvas):
+            try:
+                curr_bg = widget.cget('bg').lower()
+                if curr_bg in ('white', '#ffffff', '#1e1e1e'):
+                    widget.configure(bg=colors['card_bg'])
+            except Exception:
+                pass
+
+        # Recurse for children
+        try:
+            for child in widget.winfo_children():
+                self.apply_theme_to_widget(child, theme_name)
+        except Exception:
+            pass
 
     def create_ui(self):
         """Create the main UI with tabs"""
@@ -202,35 +485,26 @@ class MainWindow:
         self.create_footer(main_frame)
 
     def create_header(self, parent):
-        """Create header section with connection info"""
+        """Create header section with connection info and toolbar"""
         # Header card
         header_card = tk.Frame(parent, bg='white', relief='flat', bd=0)
-        header_card.pack(fill=tk.X, pady=(0, 10))
+        header_card.pack(fill=tk.X, pady=(0, 0))
         
-        # Add shadow effect with frame
-        shadow_frame = tk.Frame(parent, bg='#e0e0e0', height=2)
-        shadow_frame.place(in_=header_card, relx=0, rely=1, relwidth=1)
+        # === Row 1: Title + Connection Status ===
+        title_row = tk.Frame(header_card, bg='white')
+        title_row.pack(fill=tk.X, padx=12, pady=(8, 4))
         
-        # Inner padding frame
-        header_inner = tk.Frame(header_card, bg='white')
-        header_inner.pack(fill=tk.X, padx=12, pady=8)
-        
-        # Title section
-        title_frame = tk.Frame(header_inner, bg='white')
+        # Title section (left)
+        title_frame = tk.Frame(title_row, bg='white')
         title_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         # Try to load Hello Kitty image
         try:
-            # Look for image at data/logo.png
             img_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'logo.png')
-            
             if os.path.exists(img_path):
-                # Load and resize image
                 img = Image.open(img_path)
                 img = img.resize((30, 30), Image.Resampling.LANCZOS)
                 self.hello_kitty_photo = ImageTk.PhotoImage(img)
-                
-                # Add image label
                 img_label = tk.Label(title_frame, image=self.hello_kitty_photo, bg='white')
                 img_label.pack(side=tk.LEFT, padx=(0, 8))
             else:
@@ -253,9 +527,9 @@ class MainWindow:
                                 padx=6,
                                 pady=1)
         version_badge.pack(side=tk.LEFT, padx=(8, 0))
-        
-        # Connection status section
-        status_frame = tk.Frame(header_inner, bg='white')
+
+        # Connection status (right side of title row)
+        status_frame = tk.Frame(title_row, bg='white')
         status_frame.pack(side=tk.RIGHT)
         
         connection_label = tk.Label(status_frame,
@@ -278,6 +552,44 @@ class MainWindow:
                                        bg='white',
                                        fg=self.colors['text_light'])
         self.connection_text.pack(side=tk.LEFT, padx=(3, 0))
+
+        # === Row 2: Toolbar (toggle buttons) ===
+        toolbar_row = tk.Frame(header_card, bg=self.colors['bg'])
+        toolbar_row.pack(fill=tk.X, padx=12, pady=(0, 6))
+
+        # Always on top toggle button
+        self.topmost_btn = tk.Button(toolbar_row, 
+                                     text="📌 On Top: ON",
+                                     font=('Segoe UI', 7, 'bold'),
+                                     bg=self.colors['primary'],
+                                     fg='white',
+                                     relief='flat',
+                                     padx=8,
+                                     pady=2,
+                                     cursor='hand2',
+                                     activebackground=self.colors['primary'],
+                                     activeforeground='white',
+                                     command=self.toggle_always_on_top)
+        self.topmost_btn.pack(side=tk.LEFT, padx=(0, 6))
+
+        # Theme toggle button
+        self.theme_btn = tk.Button(toolbar_row, 
+                                   text="🌙 Dark Mode",
+                                   font=('Segoe UI', 7, 'bold'),
+                                   bg=self.colors['light'],
+                                   fg=self.colors['dark'],
+                                   relief='flat',
+                                   padx=8,
+                                   pady=2,
+                                   cursor='hand2',
+                                   activebackground=self.colors['light'],
+                                   activeforeground=self.colors['dark'],
+                                   command=self.toggle_theme)
+        self.theme_btn.pack(side=tk.LEFT)
+        
+        # Shadow separator
+        shadow_frame = tk.Frame(header_card, bg='#e0e0e0', height=2)
+        shadow_frame.pack(fill=tk.X)
 
     def create_status_section(self, parent):
         """Create enhanced status display section"""

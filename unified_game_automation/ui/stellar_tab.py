@@ -305,8 +305,14 @@ class StellarTab:
         self.main_window.area_selector.select_area()
 
     def add_or_constraint_row(self, option_name="", min_value=""):
-        colors = self.main_window.colors if hasattr(self.main_window, 'colors') else {'text': '#212121'}
-        row_frame = tk.Frame(self.or_rows_container, bg='white')
+        colors = self.main_window.colors if hasattr(self.main_window, 'colors') else {
+            'text': '#212121', 'card_bg': 'white', 'entry_bg': 'white', 'entry_fg': '#212121'
+        }
+        card_bg = colors.get('card_bg', 'white')
+        entry_bg = colors.get('entry_bg', 'white')
+        entry_fg = colors.get('entry_fg', '#212121')
+        
+        row_frame = tk.Frame(self.or_rows_container, bg=card_bg)
         row_frame.pack(fill=tk.X, pady=(0, 4))
 
         option_var = tk.StringVar(value=option_name)
@@ -316,15 +322,16 @@ class StellarTab:
         option_combo.pack(side=tk.LEFT, padx=(0, 5))
 
         tk.Label(row_frame, text="Min:", font=('Segoe UI', 8, 'bold'),
-                bg='white', fg=colors['text']).pack(side=tk.LEFT, padx=(0, 4))
+                bg=card_bg, fg=colors['text']).pack(side=tk.LEFT, padx=(0, 4))
         min_entry = tk.Entry(row_frame, font=('Segoe UI', 8), width=8,
-                             relief='solid', bd=1)
+                             relief='solid', bd=1, bg=entry_bg, fg=entry_fg, insertbackground=entry_fg)
         min_entry.insert(0, min_value)
         min_entry.pack(side=tk.LEFT, padx=(0, 5))
 
-        remove_btn = tk.Button(row_frame, text="✕", font=('Segoe UI', 8), bg='white',
+        remove_btn = tk.Button(row_frame, text="✕", font=('Segoe UI', 8), bg=card_bg,
                                fg=colors['text'], relief='flat', padx=4, pady=0,
-                               cursor='hand2', command=lambda: self.remove_or_constraint_row(row_frame))
+                               cursor='hand2', activebackground=card_bg, activeforeground=colors['text'],
+                               command=lambda: self.remove_or_constraint_row(row_frame))
         remove_btn.pack(side=tk.LEFT)
 
         self.or_rows.append({'frame': row_frame, 'combo': option_combo, 'entry': min_entry})
