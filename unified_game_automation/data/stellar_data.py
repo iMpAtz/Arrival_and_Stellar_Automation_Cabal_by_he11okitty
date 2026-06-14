@@ -14,6 +14,7 @@ STELLAR_OPTIONS = [
     "PVP Resist All Skill Amp. UP",
     "Normal Attack DMG Up",
     "Cancel Ignore Penetration",
+    "All Skill Amp UP",
     "Final Damage increased",
     "Final Damage decreased",
     "Max Critical Rate",
