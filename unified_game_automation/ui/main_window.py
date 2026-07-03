@@ -17,6 +17,7 @@ from ui.arrival_tab import ArrivalTab
 from ui.heil_tab import HeilTab
 from ui.mail_tab import MailTab
 from ui.pet_tab import PetTab
+from ui.image_clicker_tab import ImageClickerTab
 # Color Palettes for Light and Dark themes
 LIGHT_COLORS = {
     'primary': '#2196F3',
@@ -488,6 +489,7 @@ class MainWindow:
         heil_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
         mail_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
         pet_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
+        image_clicker_frame = tk.Frame(self.notebook, bg='white', padx=10, pady=10)
 
         # Add tabs to notebook with emoji icons
         self.notebook.add(arrival_frame, text="Arrival Skill")
@@ -495,6 +497,7 @@ class MainWindow:
         self.notebook.add(heil_frame, text="Heil Auto")
         self.notebook.add(mail_frame, text="Mail Receive")
         self.notebook.add(pet_frame, text="Pet Untrain")
+        self.notebook.add(image_clicker_frame, text="Image Clicker")
 
         # Create tab instances
         self.arrival_tab = ArrivalTab(arrival_frame, self)
@@ -502,6 +505,7 @@ class MainWindow:
         self.heil_tab = HeilTab(heil_frame, self)
         self.mail_tab = MailTab(mail_frame, self)
         self.pet_tab = PetTab(pet_frame, self)
+        self.image_clicker_tab = ImageClickerTab(image_clicker_frame, self)
         # Status and Log section
         self.create_status_section(self.main_frame)
 
@@ -813,6 +817,10 @@ class MainWindow:
 
     def emergency_stop(self):
         """Emergency stop triggered by ESC key"""
+        # Always stop Image Clicker (it runs independently of BotCore)
+        if hasattr(self, 'image_clicker_tab'):
+            self.image_clicker_tab.emergency_stop()
+
         if self.bot_core.is_busy():
             self.update_status("🚨 EMERGENCY STOP - stopping active automation")
             active_tool = self.bot_core.active_tool()
@@ -836,6 +844,8 @@ class MainWindow:
 
     def on_closing(self):
         """Clean up when closing the application"""
+        if hasattr(self, 'image_clicker_tab'):
+            self.image_clicker_tab.cleanup()
         self.bot_core.emergency_stop()
         keyboard.unhook_all()  # Remove all keyboard hooks
         self.root.destroy()
