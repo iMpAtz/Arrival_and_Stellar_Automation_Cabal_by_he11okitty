@@ -1,7 +1,7 @@
 <<<<<<< HEAD
 # CABAL Automation Tool — v6.0.5
 
-> **Developed by Hello Kitty Gang** (Based on original source by aquazz / Revolwer)  
+> **Developed by Hello Kitty Gang** 
 > *USE AT YOUR OWN RISK! Provided for educational and automation utility purposes.*
 
 A comprehensive, multi-tab Python automation tool for CABAL Online. The application integrates high-performance screen capture (GDI BitBlt), optical character recognition (Tesseract OCR), template-based computer vision (OpenCV), and background input automation wrapped inside a modern dark-themed CustomTkinter GUI.
@@ -109,16 +109,13 @@ The compiled output will be generated inside the `dist/` directory as `HelloK1TT
 1. **Run as Administrator**: Windows security restricts sending low-level window events to DirectX games unless the automation tool runs with Administrator privileges.
 2. **In-Game Font Setting**: If using custom game fonts, set in-game font to **Tahoma** (*Esc -> Options -> Preferences -> Font*) for optimal Tesseract OCR accuracy.
 3. **Main Display Usage**: Keep the game window on your primary monitor to avoid multi-monitor DPI scaling coordinate offsets.
-4. **Log Files**: Application logs are automatically saved to `C:\Users\<YOUR_USER>\stellarlink_logs` for tracking OCR readings and troubleshooting.
+4. **Log Files**: Application logs are automatically saved to `<YOUR_FOLDER_THAT_SAVE_THE_PROGRAM>\summaries` for tracking OCR readings and troubleshooting.
 
 ---
 
 ## 👤 Credits & Disclaimers
-
-- **Original Source Code**: Discord (`aquazz`), In-game (`Revolwer`).
-- **Enhanced & Maintained By**: **Hello Kitty Gang (PlayCabal Guild)**.
+- **Maintained By**: **Hello Kitty Gang (PlayCabal Guild)**.
 - **Disclaimer**: *This tool is provided for educational and private convenience purposes. Users assume full responsibility for using automation tools in compliance with game service terms.*
 =======
 
 This project is powered by TesseractOCR and pywin32
->>>>>>> 1f397efbdeb519dbc9c42e57909ce2fb2bb4b1fd
