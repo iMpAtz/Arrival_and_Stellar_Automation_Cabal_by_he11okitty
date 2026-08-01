@@ -1,0 +1,16 @@
+{
+  "apply_button_coords": null,
+  "change_button_coords": null,
+  "area": null,
+  "off_stat": "",
+  "off_var": "",
+  "off_stat2": "",
+  "off_var2": "",
+  "off_stat3": "",
+  "off_var3": "",
+  "def_stat": "",
+  "def_var": "",
+  "def_stat2": "",
+  "def_var2": "",
+  "delay_ms": "1000"
+}

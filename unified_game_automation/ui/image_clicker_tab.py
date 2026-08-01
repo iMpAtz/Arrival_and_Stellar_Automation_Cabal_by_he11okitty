@@ -1,4 +1,4 @@
-# Image Clicker tab UI
+# Image Clicker tab — CustomTkinter rewrite
 # Allows importing template images, defining search areas, and running detection
 #
 # This tab is independent from the shared BotCore mutual-exclusion system.
@@ -6,6 +6,7 @@
 # action (Stop button, hotkey, or ESC emergency stop).
 
 import os
+import customtkinter as ctk
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import keyboard
@@ -21,6 +22,20 @@ from data.image_clicker_data import (
     save_config,
 )
 from automation.image_clicker_automation import ImageClickerAutomation
+
+_A = {
+    "primary": "#1f6aa5", "success": "#2fa572", "danger": "#d9534f",
+    "warning": "#e8a317", "info": "#17a2b8", "purple": "#7c3aed",
+    "muted": "#888888", "surface2": "#333333",
+}
+
+
+def _section_header(parent, title, color=None):
+    color = color or _A["primary"]
+    header = ctk.CTkFrame(parent, fg_color=color, corner_radius=0, height=32)
+    header.pack(fill=tk.X)
+    header.pack_propagate(False)
+    ctk.CTkLabel(header, text=title, font=ctk.CTkFont("Segoe UI", 11, "bold"), text_color="#ffffff", anchor="w").pack(side=tk.LEFT, padx=12, pady=4)
 
 
 class ImageClickerTab:
@@ -59,158 +74,83 @@ class ImageClickerTab:
         # Register default hotkey
         self._register_hotkey()
 
-    # ================================================================== #
+    # ══════════════════════════════════════════════════════════
     #  UI CREATION
-    # ================================================================== #
+    # ══════════════════════════════════════════════════════════
 
     def create_ui(self):
-        colors = self.main_window.colors
+        scroll = ctk.CTkScrollableFrame(self.parent_frame, fg_color="transparent")
+        scroll.pack(fill=tk.BOTH, expand=True)
 
-        main = tk.Frame(self.parent_frame, bg="white")
-        main.pack(fill=tk.BOTH, expand=True)
+        # 1) Intro
+        self._create_intro_card(scroll)
+        # 2) Search Areas
+        self._create_search_areas_card(scroll)
+        # 3) Image List
+        self._create_image_list_card(scroll)
+        # 4) Image Config
+        self._create_image_config_card(scroll)
+        # 5) Controls
+        self._create_control_buttons(scroll)
 
-        # ---- Scrollable wrapper ---- #
-        canvas = tk.Canvas(main, bg="white", highlightthickness=0)
-        scrollbar = tk.Scrollbar(main, orient="vertical", command=canvas.yview)
-        self._scroll_frame = tk.Frame(canvas, bg="white")
-
-        self._scroll_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all")),
-        )
-        canvas.create_window((0, 0), window=self._scroll_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # Mousewheel scroll
-        def _on_mwheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-        canvas.bind("<Enter>", lambda _: canvas.bind_all("<MouseWheel>", _on_mwheel))
-        canvas.bind("<Leave>", lambda _: canvas.unbind_all("<MouseWheel>"))
-
-        container = self._scroll_frame
-
-        # ---- 1) Intro card ---- #
-        self._create_intro_card(container, colors)
-        # ---- 2) Search Areas card ---- #
-        self._create_search_areas_card(container, colors)
-        # ---- 3) Image List card ---- #
-        self._create_image_list_card(container, colors)
-        # ---- 4) Image Config card ---- #
-        self._create_image_config_card(container, colors)
-        # ---- 5) Control buttons ---- #
-        self._create_control_buttons(container, colors)
-
-    # ------------------------------------------------------------------ #
+    # ────────────────────────────────────────────────────────
     # 1) Intro
-    # ------------------------------------------------------------------ #
-    def _create_intro_card(self, parent, colors):
-        card = tk.Frame(parent, bg=colors["intro_bg"], relief="flat", bd=0)
-        card.pack(fill=tk.X, padx=0, pady=(0, 6))
+    # ────────────────────────────────────────────────────────
+    def _create_intro_card(self, parent):
+        intro = ctk.CTkFrame(parent, corner_radius=8, fg_color=("#dbeafe", "#1e2a3a"))
+        intro.pack(fill=tk.X, pady=(0, 8))
+        inner = ctk.CTkFrame(intro, fg_color="transparent")
+        inner.pack(fill=tk.X, padx=12, pady=8)
+        ctk.CTkLabel(inner, text="🖱️", font=ctk.CTkFont("Segoe UI", 16)).pack(side=tk.LEFT, padx=(0, 8))
+        tf = ctk.CTkFrame(inner, fg_color="transparent")
+        tf.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ctk.CTkLabel(tf, text="IMAGE CLICKER — Automated Image Detection & Click", font=ctk.CTkFont("Segoe UI", 12, "bold"), anchor="w").pack(fill=tk.X)
+        ctk.CTkLabel(tf, text="Import template images • Define search areas • Auto-detect & click", font=ctk.CTkFont("Segoe UI", 10), text_color=_A["muted"], anchor="w").pack(fill=tk.X)
 
-        inner = tk.Frame(card, bg=colors["intro_bg"])
-        inner.pack(fill=tk.X, padx=10, pady=6)
-
-        tk.Label(inner, text="🖱️", font=("Segoe UI", 12), bg=colors["intro_bg"]).pack(
-            side=tk.LEFT, padx=(0, 6)
-        )
-
-        text_frame = tk.Frame(inner, bg=colors["intro_bg"])
-        text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        tk.Label(
-            text_frame,
-            text="IMAGE CLICKER — Automated Image Detection & Click",
-            font=("Segoe UI", 9, "bold"),
-            bg=colors["intro_bg"],
-            fg=colors["text"],
-            anchor="w",
-        ).pack(fill=tk.X)
-
-        tk.Label(
-            text_frame,
-            text="Import template images • Define search areas • Auto-detect & click",
-            font=("Segoe UI", 7),
-            bg=colors["intro_bg"],
-            fg=colors["text_light"],
-            anchor="w",
-        ).pack(fill=tk.X)
-
-    # ------------------------------------------------------------------ #
+    # ────────────────────────────────────────────────────────
     # 2) Search Areas
-    # ------------------------------------------------------------------ #
-    def _create_search_areas_card(self, parent, colors):
-        card = tk.Frame(parent, bg="white", relief="flat", bd=0)
-        card.pack(fill=tk.X, padx=0, pady=(0, 6))
+    # ────────────────────────────────────────────────────────
+    def _create_search_areas_card(self, parent):
+        card = ctk.CTkFrame(parent, corner_radius=8)
+        card.pack(fill=tk.X, pady=(0, 8))
+        _section_header(card, "📐  Search Areas", _A["warning"])
+        body = ctk.CTkFrame(card, fg_color="transparent")
+        body.pack(fill=tk.X, padx=12, pady=8)
 
-        header = tk.Frame(card, bg=colors["warning"], height=28)
-        header.pack(fill=tk.X)
-        tk.Label(
-            header,
-            text="📐 Search Areas",
-            font=("Segoe UI", 8, "bold"),
-            bg=colors["warning"],
-            fg="white",
-        ).pack(side=tk.LEFT, padx=10, pady=5)
-
-        body = tk.Frame(card, bg="white")
-        body.pack(fill=tk.X, padx=10, pady=6)
-
-        # Listbox
-        list_frame = tk.Frame(body, bg="white")
+        # Listbox (tk — no CTk equivalent for Listbox)
+        list_frame = ctk.CTkFrame(body, fg_color="transparent")
         list_frame.pack(fill=tk.X)
 
         self.area_listbox = tk.Listbox(
-            list_frame, height=4, font=("Segoe UI", 8), selectmode=tk.SINGLE,
-            bg=colors["entry_bg"], fg=colors["entry_fg"],
+            list_frame, height=4, font=("Segoe UI", 10), selectmode=tk.SINGLE,
+            bg="#2b2b2b", fg="#e0e0e0", selectbackground=_A["primary"],
+            selectforeground="#ffffff", relief="flat", bd=0,
+            highlightthickness=1, highlightcolor=_A["primary"],
+            highlightbackground="#404040",
         )
         self.area_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        area_sb = tk.Scrollbar(list_frame, orient="vertical", command=self.area_listbox.yview)
+        area_sb = ctk.CTkScrollbar(list_frame, command=self.area_listbox.yview)
         area_sb.pack(side=tk.RIGHT, fill=tk.Y)
         self.area_listbox.configure(yscrollcommand=area_sb.set)
 
-        # Buttons
-        btn_frame = tk.Frame(body, bg="white")
+        btn_frame = ctk.CTkFrame(body, fg_color="transparent")
         btn_frame.pack(fill=tk.X, pady=(6, 0))
+        ctk.CTkButton(btn_frame, text="➕ Add Area", font=ctk.CTkFont("Segoe UI", 11, "bold"), fg_color=_A["primary"], hover_color="#1a5a8e", width=100, height=30, corner_radius=6, command=self._add_search_area).pack(side=tk.LEFT, padx=(0, 6))
+        ctk.CTkButton(btn_frame, text="🗑️ Remove", font=ctk.CTkFont("Segoe UI", 11, "bold"), fg_color=_A["danger"], hover_color="#c9302c", width=100, height=30, corner_radius=6, command=self._remove_search_area).pack(side=tk.LEFT)
 
-        tk.Button(
-            btn_frame, text="➕ Add Area", font=("Segoe UI", 7, "bold"),
-            bg=colors["primary"], fg="white", relief="flat", padx=10, pady=3,
-            cursor="hand2", command=self._add_search_area,
-        ).pack(side=tk.LEFT, padx=(0, 4))
-
-        tk.Button(
-            btn_frame, text="🗑️ Remove", font=("Segoe UI", 7, "bold"),
-            bg=colors["danger"], fg="white", relief="flat", padx=10, pady=3,
-            cursor="hand2", command=self._remove_search_area,
-        ).pack(side=tk.LEFT)
-
-    # ------------------------------------------------------------------ #
+    # ────────────────────────────────────────────────────────
     # 3) Image List
-    # ------------------------------------------------------------------ #
-    def _create_image_list_card(self, parent, colors):
-        card = tk.Frame(parent, bg="white", relief="flat", bd=0)
-        card.pack(fill=tk.X, padx=0, pady=(0, 6))
+    # ────────────────────────────────────────────────────────
+    def _create_image_list_card(self, parent):
+        card = ctk.CTkFrame(parent, corner_radius=8)
+        card.pack(fill=tk.X, pady=(0, 8))
+        _section_header(card, "🖼️  Template Images", _A["primary"])
+        body = ctk.CTkFrame(card, fg_color="transparent")
+        body.pack(fill=tk.X, padx=12, pady=8)
 
-        header = tk.Frame(card, bg=colors["primary"], height=28)
-        header.pack(fill=tk.X)
-        tk.Label(
-            header,
-            text="🖼️ Template Images",
-            font=("Segoe UI", 8, "bold"),
-            bg=colors["primary"],
-            fg="white",
-        ).pack(side=tk.LEFT, padx=10, pady=5)
-
-        body = tk.Frame(card, bg="white")
-        body.pack(fill=tk.X, padx=10, pady=6)
-
-        # Treeview for images
-        tree_frame = tk.Frame(body, bg="white")
+        # Treeview (ttk — no CTk table widget)
+        tree_frame = ctk.CTkFrame(body, fg_color="transparent")
         tree_frame.pack(fill=tk.X)
 
         columns = ("enabled", "threshold", "area", "click_type")
@@ -227,7 +167,7 @@ class ImageClickerTab:
         self.image_tree.column("area", width=120, anchor="w")
         self.image_tree.column("click_type", width=90, anchor="w")
 
-        tree_sb = tk.Scrollbar(tree_frame, orient="vertical", command=self.image_tree.yview)
+        tree_sb = ctk.CTkScrollbar(tree_frame, command=self.image_tree.yview)
         self.image_tree.configure(yscrollcommand=tree_sb.set)
 
         self.image_tree.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -235,186 +175,131 @@ class ImageClickerTab:
 
         self.image_tree.bind("<<TreeviewSelect>>", self._on_image_selected)
 
-        # Buttons
-        btn_frame = tk.Frame(body, bg="white")
+        btn_frame = ctk.CTkFrame(body, fg_color="transparent")
         btn_frame.pack(fill=tk.X, pady=(6, 0))
+        ctk.CTkButton(btn_frame, text="📥 Import Image", font=ctk.CTkFont("Segoe UI", 11, "bold"), fg_color=_A["success"], hover_color="#258a5e", width=130, height=30, corner_radius=6, command=self._import_image).pack(side=tk.LEFT, padx=(0, 6))
+        ctk.CTkButton(btn_frame, text="🗑️ Remove Image", font=ctk.CTkFont("Segoe UI", 11, "bold"), fg_color=_A["danger"], hover_color="#c9302c", width=130, height=30, corner_radius=6, command=self._remove_image).pack(side=tk.LEFT)
 
-        tk.Button(
-            btn_frame, text="📥 Import Image", font=("Segoe UI", 7, "bold"),
-            bg=colors["success"], fg="white", relief="flat", padx=10, pady=3,
-            cursor="hand2", command=self._import_image,
-        ).pack(side=tk.LEFT, padx=(0, 4))
-
-        tk.Button(
-            btn_frame, text="🗑️ Remove Image", font=("Segoe UI", 7, "bold"),
-            bg=colors["danger"], fg="white", relief="flat", padx=10, pady=3,
-            cursor="hand2", command=self._remove_image,
-        ).pack(side=tk.LEFT)
-
-    # ------------------------------------------------------------------ #
+    # ────────────────────────────────────────────────────────
     # 4) Image Config
-    # ------------------------------------------------------------------ #
-    def _create_image_config_card(self, parent, colors):
-        card = tk.Frame(parent, bg="white", relief="flat", bd=0)
-        card.pack(fill=tk.X, padx=0, pady=(0, 6))
-
-        header = tk.Frame(card, bg=colors["info"], height=28)
-        header.pack(fill=tk.X)
-        tk.Label(
-            header,
-            text="⚙️ Selected Image Settings",
-            font=("Segoe UI", 8, "bold"),
-            bg=colors["info"],
-            fg="white",
-        ).pack(side=tk.LEFT, padx=10, pady=5)
-
-        body = tk.Frame(card, bg="white")
-        body.pack(fill=tk.X, padx=10, pady=6)
+    # ────────────────────────────────────────────────────────
+    def _create_image_config_card(self, parent):
+        card = ctk.CTkFrame(parent, corner_radius=8)
+        card.pack(fill=tk.X, pady=(0, 8))
+        _section_header(card, "⚙️  Selected Image Settings", _A["info"])
+        body = ctk.CTkFrame(card, fg_color="transparent")
+        body.pack(fill=tk.X, padx=12, pady=8)
         self._config_body = body
 
         # Name
-        row_name = tk.Frame(body, bg="white")
-        row_name.pack(fill=tk.X, pady=2)
-        tk.Label(row_name, text="Name:", font=("Segoe UI", 8, "bold"),
-                 bg="white", fg=colors["text"], width=12, anchor="w").pack(side=tk.LEFT)
         self.cfg_name_var = tk.StringVar()
-        tk.Entry(row_name, textvariable=self.cfg_name_var, font=("Segoe UI", 8),
-                 width=25, relief="solid", bd=1).pack(side=tk.LEFT, padx=(5, 0))
+        self._cfg_row_entry(body, "Name:", self.cfg_name_var, 180)
 
         # Enabled
-        row_enabled = tk.Frame(body, bg="white")
-        row_enabled.pack(fill=tk.X, pady=2)
-        tk.Label(row_enabled, text="Enabled:", font=("Segoe UI", 8, "bold"),
-                 bg="white", fg=colors["text"], width=12, anchor="w").pack(side=tk.LEFT)
         self.cfg_enabled_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(row_enabled, variable=self.cfg_enabled_var, bg="white").pack(side=tk.LEFT)
+        row = ctk.CTkFrame(body, fg_color="transparent")
+        row.pack(fill=tk.X, pady=(0, 4))
+        ctk.CTkLabel(row, text="Enabled:", font=ctk.CTkFont("Segoe UI", 11, "bold"), width=100, anchor="w").pack(side=tk.LEFT)
+        ctk.CTkCheckBox(row, text="", variable=self.cfg_enabled_var, width=24, checkbox_width=20, checkbox_height=20).pack(side=tk.LEFT)
 
         # Threshold
-        row_thresh = tk.Frame(body, bg="white")
-        row_thresh.pack(fill=tk.X, pady=2)
-        tk.Label(row_thresh, text="Threshold:", font=("Segoe UI", 8, "bold"),
-                 bg="white", fg=colors["text"], width=12, anchor="w").pack(side=tk.LEFT)
         self.cfg_threshold_var = tk.StringVar(value="0.85")
-        tk.Entry(row_thresh, textvariable=self.cfg_threshold_var, font=("Segoe UI", 8),
-                 width=8, relief="solid", bd=1).pack(side=tk.LEFT, padx=(5, 0))
-        tk.Label(row_thresh, text="(0.0 – 1.0)", font=("Segoe UI", 7),
-                 bg="white", fg=colors["text_light"]).pack(side=tk.LEFT, padx=(6, 0))
+        r_th = self._cfg_row_entry(body, "Threshold:", self.cfg_threshold_var, 80)
+        ctk.CTkLabel(r_th, text="(0.0 – 1.0)", font=ctk.CTkFont("Segoe UI", 10), text_color=_A["muted"]).pack(side=tk.LEFT, padx=(8, 0))
 
         # Search Area
-        row_area = tk.Frame(body, bg="white")
-        row_area.pack(fill=tk.X, pady=2)
-        tk.Label(row_area, text="Search Area:", font=("Segoe UI", 8, "bold"),
-                 bg="white", fg=colors["text"], width=12, anchor="w").pack(side=tk.LEFT)
+        row_area = ctk.CTkFrame(body, fg_color="transparent")
+        row_area.pack(fill=tk.X, pady=(0, 4))
+        ctk.CTkLabel(row_area, text="Search Area:", font=ctk.CTkFont("Segoe UI", 11, "bold"), width=100, anchor="w").pack(side=tk.LEFT)
         self.cfg_area_var = tk.StringVar(value="Full Screen")
-        self.cfg_area_combo = ttk.Combobox(row_area, textvariable=self.cfg_area_var,
-                                           state="readonly", width=20, font=("Segoe UI", 8))
-        self.cfg_area_combo.pack(side=tk.LEFT, padx=(5, 0))
+        self.cfg_area_combo = ttk.Combobox(row_area, textvariable=self.cfg_area_var, state="readonly", width=20, font=("Segoe UI", 10))
+        self.cfg_area_combo.pack(side=tk.LEFT, padx=(6, 0))
         self._refresh_area_combo()
 
         # Click Type
-        row_click = tk.Frame(body, bg="white")
-        row_click.pack(fill=tk.X, pady=2)
-        tk.Label(row_click, text="Click Type:", font=("Segoe UI", 8, "bold"),
-                 bg="white", fg=colors["text"], width=12, anchor="w").pack(side=tk.LEFT)
+        row_click = ctk.CTkFrame(body, fg_color="transparent")
+        row_click.pack(fill=tk.X, pady=(0, 4))
+        ctk.CTkLabel(row_click, text="Click Type:", font=ctk.CTkFont("Segoe UI", 11, "bold"), width=100, anchor="w").pack(side=tk.LEFT)
         self.cfg_click_var = tk.StringVar(value="Left Click")
-        ttk.Combobox(row_click, textvariable=self.cfg_click_var,
-                     values=CLICK_TYPES, state="readonly", width=15,
-                     font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Combobox(row_click, textvariable=self.cfg_click_var, values=CLICK_TYPES, state="readonly", width=15, font=("Segoe UI", 10)).pack(side=tk.LEFT, padx=(6, 0))
 
         # Offset X / Y
-        row_offset = tk.Frame(body, bg="white")
-        row_offset.pack(fill=tk.X, pady=2)
-        tk.Label(row_offset, text="Offset X:", font=("Segoe UI", 8, "bold"),
-                 bg="white", fg=colors["text"], width=12, anchor="w").pack(side=tk.LEFT)
+        row_off = ctk.CTkFrame(body, fg_color="transparent")
+        row_off.pack(fill=tk.X, pady=(0, 4))
+        ctk.CTkLabel(row_off, text="Offset X:", font=ctk.CTkFont("Segoe UI", 11, "bold"), width=100, anchor="w").pack(side=tk.LEFT)
         self.cfg_offset_x_var = tk.StringVar(value="0")
-        tk.Entry(row_offset, textvariable=self.cfg_offset_x_var, font=("Segoe UI", 8),
-                 width=6, relief="solid", bd=1).pack(side=tk.LEFT, padx=(5, 8))
-        tk.Label(row_offset, text="Y:", font=("Segoe UI", 8, "bold"),
-                 bg="white", fg=colors["text"]).pack(side=tk.LEFT)
+        ctk.CTkEntry(row_off, textvariable=self.cfg_offset_x_var, width=60, height=28, font=ctk.CTkFont("Segoe UI", 11)).pack(side=tk.LEFT, padx=(6, 10))
+        ctk.CTkLabel(row_off, text="Y:", font=ctk.CTkFont("Segoe UI", 11, "bold")).pack(side=tk.LEFT, padx=(0, 4))
         self.cfg_offset_y_var = tk.StringVar(value="0")
-        tk.Entry(row_offset, textvariable=self.cfg_offset_y_var, font=("Segoe UI", 8),
-                 width=6, relief="solid", bd=1).pack(side=tk.LEFT, padx=(5, 0))
+        ctk.CTkEntry(row_off, textvariable=self.cfg_offset_y_var, width=60, height=28, font=ctk.CTkFont("Segoe UI", 11)).pack(side=tk.LEFT)
 
         # Cooldown
-        row_cd = tk.Frame(body, bg="white")
-        row_cd.pack(fill=tk.X, pady=2)
-        tk.Label(row_cd, text="Cooldown (ms):", font=("Segoe UI", 8, "bold"),
-                 bg="white", fg=colors["text"], width=12, anchor="w").pack(side=tk.LEFT)
         self.cfg_cooldown_var = tk.StringVar(value="1000")
-        tk.Entry(row_cd, textvariable=self.cfg_cooldown_var, font=("Segoe UI", 8),
-                 width=8, relief="solid", bd=1).pack(side=tk.LEFT, padx=(5, 0))
+        r_cd = self._cfg_row_entry(body, "Cooldown (ms):", self.cfg_cooldown_var, 80)
 
         # Apply button
-        apply_frame = tk.Frame(body, bg="white")
+        apply_frame = ctk.CTkFrame(body, fg_color="transparent")
         apply_frame.pack(fill=tk.X, pady=(8, 0))
-        tk.Button(
-            apply_frame, text="💾 Apply Changes", font=("Segoe UI", 8, "bold"),
-            bg=colors["success"], fg="white", relief="flat", padx=15, pady=4,
-            cursor="hand2", command=self._apply_image_config,
-        ).pack(side=tk.RIGHT)
+        ctk.CTkButton(apply_frame, text="💾 Apply Changes", font=ctk.CTkFont("Segoe UI", 11, "bold"), fg_color=_A["success"], hover_color="#258a5e", width=140, height=32, corner_radius=6, command=self._apply_image_config).pack(side=tk.RIGHT)
 
-    # ------------------------------------------------------------------ #
+    def _cfg_row_entry(self, parent, label, var, width):
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill=tk.X, pady=(0, 4))
+        ctk.CTkLabel(row, text=label, font=ctk.CTkFont("Segoe UI", 11, "bold"), width=100, anchor="w").pack(side=tk.LEFT)
+        ctk.CTkEntry(row, textvariable=var, width=width, height=28, font=ctk.CTkFont("Segoe UI", 11)).pack(side=tk.LEFT, padx=(6, 0))
+        return row
+
+    # ────────────────────────────────────────────────────────
     # 5) Controls
-    # ------------------------------------------------------------------ #
-    def _create_control_buttons(self, parent, colors):
-        card = tk.Frame(parent, bg="white", relief="flat", bd=0)
-        card.pack(fill=tk.X, padx=0, pady=(0, 6))
-
-        body = tk.Frame(card, bg="white")
-        body.pack(fill=tk.X, padx=10, pady=8)
+    # ────────────────────────────────────────────────────────
+    def _create_control_buttons(self, parent):
+        card = ctk.CTkFrame(parent, corner_radius=8)
+        card.pack(fill=tk.X, pady=(0, 8))
+        body = ctk.CTkFrame(card, fg_color="transparent")
+        body.pack(fill=tk.X, padx=12, pady=8)
 
         # Scan interval
-        interval_row = tk.Frame(body, bg="white")
-        interval_row.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(interval_row, text="Scan Interval (ms):", font=("Segoe UI", 8, "bold"),
-                 bg="white", fg=colors["text"], anchor="w").pack(side=tk.LEFT)
+        intv = ctk.CTkFrame(body, fg_color="transparent")
+        intv.pack(fill=tk.X, pady=(0, 6))
+        ctk.CTkLabel(intv, text="Scan Interval (ms):", font=ctk.CTkFont("Segoe UI", 11, "bold"), anchor="w").pack(side=tk.LEFT)
         self.scan_interval_var = tk.StringVar(value="200")
-        tk.Entry(interval_row, textvariable=self.scan_interval_var, font=("Segoe UI", 8),
-                 width=8, relief="solid", bd=1).pack(side=tk.LEFT, padx=(5, 0))
-        tk.Label(interval_row, text="(delay between scan cycles)",
-                 font=("Segoe UI", 7), bg="white", fg=colors["text_light"]).pack(
-            side=tk.LEFT, padx=(6, 0))
+        ctk.CTkEntry(intv, textvariable=self.scan_interval_var, width=80, height=28, font=ctk.CTkFont("Segoe UI", 11)).pack(side=tk.LEFT, padx=(6, 8))
+        ctk.CTkLabel(intv, text="(delay between scan cycles)", font=ctk.CTkFont("Segoe UI", 10), text_color=_A["muted"]).pack(side=tk.LEFT)
 
-        # Hotkey row
-        hotkey_row = tk.Frame(body, bg="white")
-        hotkey_row.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(hotkey_row, text="Toggle Hotkey:", font=("Segoe UI", 8, "bold"),
-                 bg="white", fg=colors["text"], anchor="w").pack(side=tk.LEFT)
+        # Hotkey
+        hk = ctk.CTkFrame(body, fg_color="transparent")
+        hk.pack(fill=tk.X, pady=(0, 8))
+        ctk.CTkLabel(hk, text="Toggle Hotkey:", font=ctk.CTkFont("Segoe UI", 11, "bold"), anchor="w").pack(side=tk.LEFT)
         self.hotkey_var = tk.StringVar(value=self._hotkey_name)
-        self.hotkey_entry = tk.Entry(hotkey_row, textvariable=self.hotkey_var,
-                                     font=("Segoe UI", 8), width=8, relief="solid", bd=1)
-        self.hotkey_entry.pack(side=tk.LEFT, padx=(5, 0))
-        tk.Button(
-            hotkey_row, text="Set", font=("Segoe UI", 7, "bold"),
-            bg=colors["primary"], fg="white", relief="flat", padx=8, pady=2,
-            cursor="hand2", command=self._update_hotkey,
-        ).pack(side=tk.LEFT, padx=(4, 0))
+        self.hotkey_entry = ctk.CTkEntry(hk, textvariable=self.hotkey_var, width=80, height=28, font=ctk.CTkFont("Segoe UI", 11))
+        self.hotkey_entry.pack(side=tk.LEFT, padx=(6, 6))
+        ctk.CTkButton(hk, text="Set", font=ctk.CTkFont("Segoe UI", 11, "bold"), fg_color=_A["primary"], hover_color="#1a5a8e", width=50, height=28, corner_radius=6, command=self._update_hotkey).pack(side=tk.LEFT, padx=(0, 6))
         self.hotkey_status_var = tk.StringVar(value=f"(Press {self._hotkey_name} to toggle)")
-        tk.Label(hotkey_row, textvariable=self.hotkey_status_var,
-                 font=("Segoe UI", 7), bg="white", fg=colors["text_light"]).pack(
-            side=tk.LEFT, padx=(6, 0))
+        ctk.CTkLabel(hk, textvariable=self.hotkey_status_var, font=ctk.CTkFont("Segoe UI", 10), text_color=_A["muted"]).pack(side=tk.LEFT)
 
         # Buttons
-        btn_frame = tk.Frame(body, bg="white")
-        btn_frame.pack()
+        btn_row = ctk.CTkFrame(body, fg_color="transparent")
+        btn_row.pack()
 
-        self.btn_start = tk.Button(
-            btn_frame, text="▶️ START (F6)", font=("Segoe UI", 9, "bold"),
-            bg=colors["success"], fg="white", relief="flat", padx=30, pady=8,
-            cursor="hand2", command=self.start_automation,
-        )
-        self.btn_start.pack(side=tk.LEFT, padx=(0, 5))
+        self.btn_start = ctk.CTkButton(btn_row, text=f"▶️ START ({self._hotkey_name})", font=ctk.CTkFont("Segoe UI", 12, "bold"), fg_color=_A["success"], hover_color="#258a5e", width=140, height=38, corner_radius=8, command=self.start_automation)
+        self.btn_start.pack(side=tk.LEFT, padx=(0, 6))
 
-        self.btn_stop = tk.Button(
-            btn_frame, text="⏹️ STOP (F6)", font=("Segoe UI", 9, "bold"),
-            bg=colors["danger"], fg="white", relief="flat", padx=30, pady=8,
-            cursor="hand2", state=tk.DISABLED, command=self.stop_automation,
-        )
-        self.btn_stop.pack(side=tk.LEFT)
+        self.btn_stop = ctk.CTkButton(btn_row, text=f"⏹️ STOP ({self._hotkey_name})", font=ctk.CTkFont("Segoe UI", 12, "bold"), fg_color=_A["danger"], hover_color="#c9302c", width=140, height=38, corner_radius=8, state="disabled", command=self.stop_automation)
+        self.btn_stop.pack(side=tk.LEFT, padx=(0, 6))
 
-    # ================================================================== #
-    #  HOTKEY
-    # ================================================================== #
+        self.btn_save_config = ctk.CTkButton(btn_row, text="💾 Save Config", font=ctk.CTkFont("Segoe UI", 12, "bold"), fg_color=_A["primary"], hover_color="#1a5a8e", width=130, height=38, corner_radius=8, command=self._on_user_save_config)
+        self.btn_save_config.pack(side=tk.LEFT)
+
+    def _on_user_save_config(self):
+        """Explicitly save configuration and inform user."""
+        self._save_config()
+        if hasattr(self.main_window, 'update_status'):
+            self.main_window.update_status("Image Clicker config saved successfully!")
+        messagebox.showinfo("Config Saved", "Image Clicker configuration has been saved.")
+
+    # ══════════════════════════════════════════════════════════
+    #  HOTKEY — UNCHANGED
+    # ══════════════════════════════════════════════════════════
 
     def _register_hotkey(self):
         """Register the toggle hotkey using the keyboard module."""
@@ -444,9 +329,8 @@ class ImageClickerTab:
         self._hotkey_name = new_key
         self._register_hotkey()
         self.hotkey_status_var.set(f"(Press {self._hotkey_name} to toggle)")
-        # Update button labels
-        self.btn_start.config(text=f"▶️ START ({self._hotkey_name})")
-        self.btn_stop.config(text=f"⏹️ STOP ({self._hotkey_name})")
+        self.btn_start.configure(text=f"▶️ START ({self._hotkey_name})")
+        self.btn_stop.configure(text=f"⏹️ STOP ({self._hotkey_name})")
         self.main_window.update_status(f"Image Clicker hotkey set to: {self._hotkey_name}")
 
     def _toggle_from_hotkey(self):
@@ -460,23 +344,23 @@ class ImageClickerTab:
         else:
             self.start_automation()
 
-    # ================================================================== #
-    #  SEARCH AREA ACTIONS
-    # ================================================================== #
+    # ══════════════════════════════════════════════════════════
+    #  SEARCH AREA ACTIONS — UNCHANGED
+    # ══════════════════════════════════════════════════════════
 
     def _add_search_area(self):
         if self._running:
             return
 
-        name_win = tk.Toplevel(self.main_window.root)
+        name_win = ctk.CTkToplevel(self.main_window.root)
         name_win.title("New Search Area")
-        name_win.geometry("300x120")
+        name_win.geometry("300x140")
         name_win.attributes("-topmost", True)
         name_win.resizable(False, False)
 
-        tk.Label(name_win, text="Area name:", font=("Segoe UI", 9)).pack(pady=(12, 4))
+        ctk.CTkLabel(name_win, text="Area name:", font=ctk.CTkFont("Segoe UI", 12)).pack(pady=(16, 6))
         name_var = tk.StringVar(value=f"Area {len(self._search_areas)}")
-        name_entry = tk.Entry(name_win, textvariable=name_var, width=25, font=("Segoe UI", 9))
+        name_entry = ctk.CTkEntry(name_win, textvariable=name_var, width=220, font=ctk.CTkFont("Segoe UI", 12))
         name_entry.pack()
         name_entry.focus_set()
 
@@ -492,9 +376,7 @@ class ImageClickerTab:
             name_win.destroy()
             self._select_area_for_name(area_name)
 
-        tk.Button(name_win, text="OK & Select Area", command=on_ok,
-                  font=("Segoe UI", 8, "bold"), bg="#2196F3", fg="white",
-                  relief="flat", padx=12, pady=4).pack(pady=(10, 0))
+        ctk.CTkButton(name_win, text="OK & Select Area", command=on_ok, font=ctk.CTkFont("Segoe UI", 11, "bold"), fg_color=_A["primary"], hover_color="#1a5a8e", width=140, height=32, corner_radius=6).pack(pady=(12, 0))
         name_win.bind("<Return>", on_ok)
 
     def _select_area_for_name(self, area_name):
@@ -553,9 +435,9 @@ class ImageClickerTab:
         if names and self.cfg_area_var.get() not in names:
             self.cfg_area_var.set(names[0])
 
-    # ================================================================== #
-    #  IMAGE LIST ACTIONS
-    # ================================================================== #
+    # ══════════════════════════════════════════════════════════
+    #  IMAGE LIST ACTIONS — UNCHANGED
+    # ══════════════════════════════════════════════════════════
 
     def _import_image(self):
         file_path = filedialog.askopenfilename(
@@ -674,15 +556,14 @@ class ImageClickerTab:
         self.image_tree.heading("#0", text="Name")
         self.image_tree.column("#0", width=120, anchor="w")
 
-    # ================================================================== #
-    #  START / STOP  (no BotCore mutual exclusion)
-    # ================================================================== #
+    # ══════════════════════════════════════════════════════════
+    #  START / STOP — UNCHANGED
+    # ══════════════════════════════════════════════════════════
 
     def start_automation(self):
         if self._running:
             return
 
-        # Validate scan interval
         try:
             interval = int(self.scan_interval_var.get())
             if interval < 50:
@@ -691,28 +572,27 @@ class ImageClickerTab:
             messagebox.showerror("Error", "Scan interval must be ≥ 50 ms")
             return
 
-        # Push config to automation
         self.automation.set_image_configs(self._image_configs)
         self.automation.set_search_areas(self._search_areas)
         self.automation.set_scan_interval(interval)
 
         if self.automation.start():
             self._running = True
-            self.btn_start.config(state=tk.DISABLED)
-            self.btn_stop.config(state=tk.NORMAL)
+            self.btn_start.configure(state="disabled")
+            self.btn_stop.configure(state="normal")
 
     def stop_automation(self):
         self.automation.stop()
         self._running = False
-        self.btn_start.config(state=tk.NORMAL)
-        self.btn_stop.config(state=tk.DISABLED)
+        self.btn_start.configure(state="normal")
+        self.btn_stop.configure(state="disabled")
         self.main_window.update_status("Image Clicker stopped")
 
     def emergency_stop(self):
         self.automation.emergency_stop()
         self._running = False
-        self.btn_start.config(state=tk.NORMAL)
-        self.btn_stop.config(state=tk.DISABLED)
+        self.btn_start.configure(state="normal")
+        self.btn_stop.configure(state="disabled")
 
     def cleanup(self):
         """Called when the application is closing."""
@@ -720,9 +600,9 @@ class ImageClickerTab:
         if self._running:
             self.automation.stop()
 
-    # ================================================================== #
-    #  CONFIG PERSISTENCE
-    # ================================================================== #
+    # ══════════════════════════════════════════════════════════
+    #  CONFIG PERSISTENCE — UNCHANGED
+    # ══════════════════════════════════════════════════════════
 
     def _save_config(self):
         data = {

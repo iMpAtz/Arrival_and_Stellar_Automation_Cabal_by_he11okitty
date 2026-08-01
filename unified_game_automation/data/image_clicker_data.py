@@ -4,6 +4,7 @@
 import json
 import os
 import shutil
+import sys
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -67,7 +68,12 @@ def get_default_config():
 
 def _data_dir():
     """Return the absolute path to the data/ directory."""
-    return os.path.dirname(os.path.abspath(__file__))
+    if getattr(sys, 'frozen', False):
+        path = os.path.join(os.path.dirname(sys.executable), 'data')
+    else:
+        path = os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def get_templates_dir():

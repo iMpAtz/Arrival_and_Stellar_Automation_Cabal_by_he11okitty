@@ -21,7 +21,12 @@ class HeilAutomation(BaseAutomation):
         self.click_coords_3 = None  # Position 3 - Inventory management
         self.click_coords_4 = None  # Position 4 - Inventory management
         self.click_coords_5 = None  # Position 5 - Inventory management
-        self.ocr_area_count = None   # OCR area for item count (X / Y)
+        # Configuration - 5 click positions
+        self.click_coords_1 = None  # Position 1 - Main action
+        self.click_coords_2 = None  # Position 2 - Inventory management
+        self.click_coords_3 = None  # Position 3 - Inventory management
+        self.click_coords_4 = None  # Position 4 - Inventory management
+        self.click_coords_5 = None  # Position 5 - Inventory management
         self.ocr_area_message = None # OCR area for inventory message
         self.delay_ms = 1000         # Default delay in milliseconds
         self.inventory_check_cooldown = 30  # Cooldown in seconds (1 minute)
@@ -46,10 +51,6 @@ class HeilAutomation(BaseAutomation):
         """Set click position 5 (inventory management)"""
         self.click_coords_5 = coords
 
-    def set_ocr_area_count(self, area):
-        """Set the OCR area for item count detection (X / Y format)"""
-        self.ocr_area_count = area
-
     def set_ocr_area_message(self, area):
         """Set the OCR area for inventory message detection"""
         self.ocr_area_message = area
@@ -68,10 +69,6 @@ class HeilAutomation(BaseAutomation):
 
         if not self.click_coords_2 or not self.click_coords_3 or not self.click_coords_4 or not self.click_coords_5:
             messagebox.showwarning("Missing click positions", "Please set all click positions (2, 3, 4, 5) for inventory management!")
-            return False
-
-        if not self.ocr_area_count:
-            messagebox.showwarning("Missing OCR area", "Please define OCR area for item count detection!")
             return False
 
         if not self.ocr_area_message:
@@ -115,38 +112,6 @@ class HeilAutomation(BaseAutomation):
             return False
         except Exception as e:
             print(f"OCR detection error: {e}")
-            return False
-
-    def _check_stop_condition(self):
-        """Stop when detected number from OCR is <= 12"""
-        try:
-        # Capture screenshot of OCR area
-            screenshot = self.game_connector.capture_area_bitblt(self.ocr_area_count)
-            if screenshot is None:
-                return False
-
-            # Extract numbers using OCR
-            raw_text = self.ocr_engine.extract_numbers(screenshot)
-            print(f"OCR numbers read: {repr(raw_text)}")
-
-            import re
-            numbers = re.findall(r'\d+', raw_text)
-
-            if not numbers:
-                return False
-
-        # Use first detected number group
-            value = int(numbers[0])
-            print(f"OCR value detected: {value}")
-
-        # Stop condition
-            if value <= 12 or value == 274:
-                self.update_status(f"⚠️ Stop condition met: {value} <= 12")
-                return True
-
-            return False
-        except Exception as e:
-            print(f"Stop condition check error: {e}")
             return False
 
     def _inventory_management_loop(self):
@@ -221,13 +186,6 @@ class HeilAutomation(BaseAutomation):
             if should_check_ocr:
                 self.update_status(f"🔍 Running OCR check at click #{click_count}")
                 ocr_start = time.time()
-                
-                # Check for stop condition (number comparison)
-                if self._check_stop_condition():
-                    self.update_status("🛑 Stopping automation - Stop condition met!")
-                    self.stop()
-                    messagebox.showinfo("Automation Stopped", "Stop condition met: Left number is less than right number.")
-                    break
                 
                 # Check for inventory full message (with cooldown)
                 current_time = time.time()

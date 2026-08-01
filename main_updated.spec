@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 
 
 a = Analysis(
@@ -8,6 +9,7 @@ a = Analysis(
     datas=[
         ('unified_game_automation/Tesseract', 'Tesseract'),
         ('unified_game_automation/data', 'data'),  # เพิ่มโฟลเดอร์ data ที่มีรูป Hello Kitty
+        (os.path.join(os.path.dirname(__import__('customtkinter').__file__)), 'customtkinter'),
     ],
     hiddenimports=[
         'PIL',
@@ -21,7 +23,9 @@ a = Analysis(
         'win32ui',
         'threading',
         'tkinter.ttk',
-        'pytesseract'
+        'pytesseract',
+        'customtkinter',
+        'darkdetect',
     ],
     hookspath=[],
     hooksconfig={},
@@ -38,7 +42,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='HelloK1TTY_Automation_V6.0.4',
+    name='HelloK1TTY_Automation_V6.0.5',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
