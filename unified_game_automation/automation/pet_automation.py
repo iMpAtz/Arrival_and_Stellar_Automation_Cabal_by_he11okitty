@@ -29,6 +29,9 @@ class PetAutomation(BaseAutomation):
     def set_area(self, area):
         self.area = area
 
+    def set_ocr_area(self, area):
+        self.set_area(area)
+
     def set_ocr_search_texts(self, targets):
         # Store normalized lowercase targets once to avoid inconsistent matching.
         # Keep stronger (longer) targets first so exact matches are preferred.
@@ -46,6 +49,21 @@ class PetAutomation(BaseAutomation):
 
         # Prefer longer phrases first to avoid shorter substrings matching too early.
         self.targets = sorted(normalized_targets, key=lambda s: (-len(s), s))
+
+    def set_ocr_targets(self, targets):
+        self.set_ocr_search_texts(targets)
+
+    def set_step_coords(self, step_name, coords):
+        step_map = {
+            "Pet training": "pet_training",
+            "Click on untrain pet icon": "untrain_icon",
+            "Click on wrong slot": "wrong_slot",
+            "Click untrain button": "untrain_btn",
+            "Click yes button": "yes_btn",
+        }
+        key = step_map.get(step_name, step_name)
+        if key in self.coords:
+            self.coords[key] = coords
 
     def set_pet_training_coords(self, coords):
         self.coords["pet_training"] = coords
