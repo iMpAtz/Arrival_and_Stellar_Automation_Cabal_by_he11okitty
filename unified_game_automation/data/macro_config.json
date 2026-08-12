@@ -1,0 +1,46 @@
+{
+  "click_coords": [
+    [
+      1024,
+      1001
+    ],
+    [
+      1058,
+      1002
+    ],
+    [
+      1101,
+      1010
+    ],
+    [
+      1131,
+      1005
+    ],
+    [
+      870,
+      923
+    ],
+    [
+      419,
+      333
+    ]
+  ],
+  "click_coords_enabled": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "click_coords_type": [
+    "Right Click",
+    "Right Click",
+    "Right Click",
+    "Right Click",
+    "Right Click",
+    "Middle Click"
+  ],
+  "coord_delay_ms": "100",
+  "loop_delay_ms": "100"
+}

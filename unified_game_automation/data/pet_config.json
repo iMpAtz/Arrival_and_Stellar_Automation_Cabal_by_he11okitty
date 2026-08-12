@@ -1,0 +1,49 @@
+{
+  "step_coords": {
+    "Pet training": [
+      140,
+      447
+    ],
+    "Click on untrain pet icon": [
+      1469,
+      371
+    ],
+    "Click on wrong slot": [
+      1474,
+      506
+    ],
+    "Click untrain button": [
+      1379,
+      779
+    ],
+    "Click yes button": [
+      949,
+      597
+    ]
+  },
+  "ocr_area": [
+    62,
+    340,
+    194,
+    28
+  ],
+  "yolo_area": [
+    16,
+    306,
+    68,
+    65
+  ],
+  "delay_ms": "200",
+  "selected_ocr_options": [
+    "All Skill Amp. UP",
+    "Critical DMG.",
+    "Max Critical Rate"
+  ],
+  "detection_mode": "ocr",
+  "yolo_model_path": "E:/miniproject/YOLO26 for Cabal test/v13.onnx",
+  "yolo_conf_threshold": 0.55,
+  "yolo_selected_targets": [
+    "Critical DMG.",
+    "Max Critical Rate"
+  ]
+}

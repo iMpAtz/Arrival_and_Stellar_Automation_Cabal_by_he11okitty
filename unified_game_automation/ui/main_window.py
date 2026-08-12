@@ -21,6 +21,7 @@ from ui.heil_tab import HeilTab
 from ui.mail_tab import MailTab
 from ui.pet_tab import PetTab
 from ui.image_clicker_tab import ImageClickerTab
+from ui.macro_tab import MacroTab
 
 # ──────────────────────────────────────────────────────────────
 # Monkey-patch: CTkScrollableFrame._check_if_valid_scroll
@@ -272,6 +273,7 @@ class MainWindow:
             "📧 Mail",
             "🐾 Pet",
             "🖱 Img Clicker",
+            "🕹️ Macro",
         ]
         for name in tab_names:
             self.tabview.add(name)
@@ -283,6 +285,7 @@ class MainWindow:
         self.mail_tab = MailTab(self.tabview.tab("📧 Mail"), self)
         self.pet_tab = PetTab(self.tabview.tab("🐾 Pet"), self)
         self.image_clicker_tab = ImageClickerTab(self.tabview.tab("🖱 Img Clicker"), self)
+        self.macro_tab = MacroTab(self.tabview.tab("🕹️ Macro"), self)
 
         # Status section
         self.create_status_section(self.main_frame)
@@ -591,7 +594,7 @@ class MainWindow:
             window_rect = self.game_connector.get_window_rect()
             if window_rect:
                 window_info = (
-                    f"✅ Connected to game ({window_rect.width}x{window_rect.height})"
+                    f"✅ Connected to game ({window_rect.width()}x{window_rect.height()})"
                 )
             else:
                 window_info = "✅ Connected to game window"
@@ -700,6 +703,8 @@ class MainWindow:
                 self.heil_tab.emergency_stop()
             elif active_tool == "Pet Untrain":
                 self.pet_tab.emergency_stop()
+            elif active_tool == "Macro":
+                self.macro_tab.stop_automation()
 
             self.bot_core.emergency_stop()
             self.clear_running_tool()

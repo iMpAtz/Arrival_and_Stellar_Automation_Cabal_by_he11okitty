@@ -71,6 +71,78 @@ class GameConnector:
             self.update_status(f"Click failed: {str(e)}")
             return False
 
+    def middle_click_at_position(self, coords, adjust_for_client_area=True):
+        """Middle click at the specified coordinates in the game window without moving mouse cursor"""
+        if not self.game_window:
+            return False
+        try:
+            target_coords = coords
+            if adjust_for_client_area:
+                offset = self.get_window_client_offset()
+                if offset:
+                    target_coords = (coords[0] - offset[0], coords[1] - offset[1])
+
+            # Try pywinauto window click with button='middle'
+            try:
+                self.game_window.click(button='middle', coords=target_coords)
+                return True
+            except Exception:
+                pass
+
+            # Fallback to PostMessage WM_MBUTTONDOWN / WM_MBUTTONUP (no mouse movement)
+            try:
+                hwnd = self.game_window.handle
+                lparam = (int(target_coords[1]) << 16) | (int(target_coords[0]) & 0xFFFF)
+                win32gui.PostMessage(hwnd, win32con.WM_MBUTTONDOWN, win32con.MK_MBUTTON, lparam)
+                win32gui.PostMessage(hwnd, win32con.WM_MBUTTONUP, 0, lparam)
+                return True
+            except Exception:
+                pass
+
+            return False
+        except Exception as e:
+            self.update_status(f"Middle click failed: {str(e)}")
+            return False
+
+    def right_click_at_position(self, coords, adjust_for_client_area=True):
+        """Right click at the specified coordinates in the game window without moving mouse cursor"""
+        if not self.game_window:
+            return False
+        try:
+            target_coords = coords
+            if adjust_for_client_area:
+                offset = self.get_window_client_offset()
+                if offset:
+                    target_coords = (coords[0] - offset[0], coords[1] - offset[1])
+
+            # Try pywinauto right click
+            try:
+                if hasattr(self.game_window, 'right_click'):
+                    self.game_window.right_click(coords=target_coords)
+                else:
+                    self.game_window.click(button='right', coords=target_coords)
+                return True
+            except Exception:
+                pass
+
+            # Fallback to PostMessage WM_RBUTTONDOWN / WM_RBUTTONUP (no mouse movement)
+            try:
+                hwnd = self.game_window.handle
+                lparam = (int(target_coords[1]) << 16) | (int(target_coords[0]) & 0xFFFF)
+                win32gui.PostMessage(hwnd, win32con.WM_RBUTTONDOWN, win32con.MK_RBUTTON, lparam)
+                win32gui.PostMessage(hwnd, win32con.WM_RBUTTONUP, 0, lparam)
+                return True
+            except Exception:
+                pass
+
+            return False
+        except Exception as e:
+            self.update_status(f"Right click failed: {str(e)}")
+            return False
+
+
+
+
     def get_window_rect(self):
         """Get the rectangle of the game window"""
         if not self.game_window:
