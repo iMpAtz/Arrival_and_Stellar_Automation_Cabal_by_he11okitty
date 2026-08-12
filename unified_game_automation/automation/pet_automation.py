@@ -497,21 +497,25 @@ class PetAutomation(BaseAutomation):
                 return False, "", 0.0, None
 
         # =====================================================================
-        # ขั้นตอนที่ 1: ROI Crop & Preprocessing
+        # ขั้นตอนที่ 1: Raw Image Capture & Preprocessing
         # =====================================================================
-        # 1.1 Crop ภาพตามพื้นที่ yolo_area (หรือ fallback ไปใช้ ocr_area/area)
+        # 1.1 ใช้ภาพ Raw Capture โดยตรงจาก Game Connector
         roi_area = self.get_yolo_area()
-        if not roi_area:
-            return False, "", 0.0, None
+        screenshot = self.game_connector.take_screenshot(roi_area) if roi_area else self.game_connector.take_screenshot()
+        if screenshot is None:
+            screenshot = self.game_connector.take_screenshot()
 
-        screenshot = self.game_connector.take_screenshot(roi_area)
         if screenshot is None:
             return False, "", 0.0, None
 
+        # แปลงเป็น RGB จากรูป Raw ที่ capture ได้โดยตรง
         if isinstance(screenshot, Image.Image):
             img_rgb = screenshot.convert("RGB")
+        elif isinstance(screenshot, np.ndarray):
+            img_rgb = Image.fromarray(np.uint8(screenshot)).convert("RGB")
         else:
             return False, "", 0.0, None
+
 
         # 1.2 อ่านขนาด Input shape ที่โมเดล ONNX ต้องการ (เช่น 1x3x640x640)
         try:
@@ -654,6 +658,9 @@ class PetAutomation(BaseAutomation):
             matched_ocr, normalized = self._ocr_match_pet_targets()
             if normalized.strip():
                 self.update_status(f"[OCR Scan] Text: \"{normalized[:80]}\"")
+            else:
+                self.update_status("[OCR Scan] Text: (Empty / Unreadable)")
+
             if matched_ocr:
                 msg = f"OCR Target Matched: {normalized[:80]}"
                 self.update_status(msg)

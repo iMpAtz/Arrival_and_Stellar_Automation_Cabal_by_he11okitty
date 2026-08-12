@@ -21,7 +21,15 @@ class OCREngine:
             main_script_dir = os.getcwd()
 
         base_path = getattr(sys, "_MEIPASS", main_script_dir)
-        tesseract_path = os.path.join(base_path, "Tesseract", "tesseract.exe")
+        tesseract_dir = os.path.join(base_path, "Tesseract")
+        if not os.path.exists(tesseract_dir):
+            tesseract_dir = os.path.join(main_script_dir, "Tesseract")
+
+        tesseract_path = os.path.join(tesseract_dir, "tesseract.exe")
+        self.tessdata_dir = os.path.abspath(os.path.join(tesseract_dir, "tessdata")).replace("\\", "/")
+
+        # Explicitly set TESSDATA_PREFIX environment variable (forward slashes prevent C++ path quote issues)
+        os.environ["TESSDATA_PREFIX"] = self.tessdata_dir
         pytesseract.pytesseract.tesseract_cmd = tesseract_path
 
         if status_callback:
@@ -45,10 +53,14 @@ class OCREngine:
             if image is None:
                 return ""
 
+            tess_config = f'--tessdata-dir {self.tessdata_dir}'
             if config:
-                text = pytesseract.image_to_string(image, config=config)
-            else:
-                text = pytesseract.image_to_string(image)
+                if '--tessdata-dir' not in config:
+                    tess_config = f'{tess_config} {config}'
+                else:
+                    tess_config = config
+
+            text = pytesseract.image_to_string(image, config=tess_config)
             return text
         except Exception as e:
             self.update_status(f"OCR error: {str(e)}")
@@ -82,15 +94,13 @@ class OCREngine:
             image = image.filter(ImageFilter.SHARPEN)
             
             # Tesseract config optimized for numbers
-            # --psm 7: Treat image as a single text line
-            # --oem 1: Use LSTM neural network engine for better accuracy
-            # tessedit_char_whitelist: Only recognize digits and separator
-            custom_config = r'--psm 7 --oem 1 -c tessedit_char_whitelist=0123456789/ '
+            custom_config = f'--tessdata-dir {self.tessdata_dir} --psm 7 --oem 1 -c tessedit_char_whitelist=0123456789/ '
             text = pytesseract.image_to_string(image, config=custom_config)
             return text
         except Exception as e:
             self.update_status(f"OCR number extraction error: {str(e)}")
             return ""
+
 
     def parse_stellar_text(self, text):
         """
