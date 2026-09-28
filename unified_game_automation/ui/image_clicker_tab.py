@@ -48,6 +48,7 @@ class ImageClickerTab:
         self.automation = ImageClickerAutomation(
             main_window.game_connector,
             status_callback=main_window.update_status,
+            runtime_core=main_window.bot_core,
         )
 
         # Data model
@@ -207,6 +208,11 @@ class ImageClickerTab:
         r_th = self._cfg_row_entry(body, "Threshold:", self.cfg_threshold_var, 80)
         ctk.CTkLabel(r_th, text="(0.0 – 1.0)", font=ctk.CTkFont("Segoe UI", 10), text_color=_A["muted"]).pack(side=tk.LEFT, padx=(8, 0))
 
+        self.cfg_scale_min = tk.StringVar(value="1.0")
+        self.cfg_scale_max = tk.StringVar(value="1.0")
+        self._cfg_row_entry(body, "Min scale:", self.cfg_scale_min, 80)
+        self._cfg_row_entry(body, "Max scale:", self.cfg_scale_max, 80)
+
         # Search Area
         row_area = ctk.CTkFrame(body, fg_color="transparent")
         row_area.pack(fill=tk.X, pady=(0, 4))
@@ -335,7 +341,7 @@ class ImageClickerTab:
 
     def _toggle_from_hotkey(self):
         """Called from the keyboard hotkey — schedule on main thread."""
-        self.main_window.root.after(0, self._toggle)
+        self.main_window.post_ui(self._toggle)
 
     def _toggle(self):
         """Toggle start/stop."""
@@ -489,6 +495,8 @@ class ImageClickerTab:
         self.cfg_name_var.set(cfg.get("name", ""))
         self.cfg_enabled_var.set(cfg.get("enabled", True))
         self.cfg_threshold_var.set(str(cfg.get("threshold", 0.85)))
+        self.cfg_scale_min.set(str(cfg.get("scale_min", 1.0)))
+        self.cfg_scale_max.set(str(cfg.get("scale_max", 1.0)))
         self.cfg_area_var.set(cfg.get("search_area_name", "Full Screen"))
         self.cfg_click_var.set(cfg.get("click_type", "Left Click"))
         self.cfg_offset_x_var.set(str(cfg.get("offset_x", 0)))
@@ -524,7 +532,15 @@ class ImageClickerTab:
             messagebox.showerror("Error", "Cooldown must be a positive integer (ms)")
             return
 
+        try:
+            scale_min, scale_max = float(self.cfg_scale_min.get()), float(self.cfg_scale_max.get())
+            if not 0.5 <= scale_min <= scale_max <= 2.0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Error", "Scales must satisfy 0.5 <= min <= max <= 2.0")
+            return
         cfg = self._image_configs[idx]
+        cfg["scale_min"], cfg["scale_max"] = scale_min, scale_max
         cfg["name"] = self.cfg_name_var.get().strip() or cfg["name"]
         cfg["enabled"] = self.cfg_enabled_var.get()
         cfg["threshold"] = threshold

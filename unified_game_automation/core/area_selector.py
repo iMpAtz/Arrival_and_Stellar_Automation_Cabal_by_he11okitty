@@ -14,7 +14,7 @@ class OverlayWindow(tk.Toplevel):
         self.config(bg="black")
         self.attributes("-transparentcolor", "black")
 
-        self.geometry(f"{w}x{h}+{x}+{y}")
+        self.geometry(f"{w}x{h}{x:+d}{y:+d}")
 
         self.canvas = tk.Canvas(self, bg="black", highlightthickness=0, bd=0)
         self.canvas.pack(fill="both", expand=True)
@@ -53,7 +53,13 @@ class AreaSelector:
 
             # Create fullscreen overlay for selection
             overlay = tk.Toplevel(self.root)
-            overlay.attributes('-fullscreen', True)
+            from ctypes import windll
+            vx = windll.user32.GetSystemMetrics(76)
+            vy = windll.user32.GetSystemMetrics(77)
+            vw = windll.user32.GetSystemMetrics(78)
+            vh = windll.user32.GetSystemMetrics(79)
+            overlay.overrideredirect(True)
+            overlay.geometry(f"{vw}x{vh}{vx:+d}{vy:+d}")
             overlay.attributes('-alpha', 0.2)
             overlay.attributes('-topmost', True)
             overlay.configure(bg='grey')
@@ -86,10 +92,10 @@ class AreaSelector:
 
             def on_release(event):
                 try:
-                    left = min(start_x, event.x)
-                    top = min(start_y, event.y)
-                    right = max(start_x, event.x)
-                    bottom = max(start_y, event.y)
+                    left = vx + min(start_x, event.x)
+                    top = vy + min(start_y, event.y)
+                    right = vx + max(start_x, event.x)
+                    bottom = vy + max(start_y, event.y)
                     width = right - left
                     height = bottom - top
 

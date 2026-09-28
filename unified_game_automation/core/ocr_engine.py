@@ -12,95 +12,144 @@ class OCREngine:
         """Initialize the Tesseract OCR engine"""
         self.status_callback = status_callback
 
-        # Set up Tesseract path (exactly as in main.py)
-        # The base_path should be the main script directory, not the core module directory
-        import __main__
-        if hasattr(__main__, '__file__'):
-            main_script_dir = os.path.dirname(os.path.abspath(__main__.__file__))
-        else:
-            main_script_dir = os.getcwd()
-
-        base_path = getattr(sys, "_MEIPASS", main_script_dir)
-        tesseract_dir = os.path.join(base_path, "Tesseract")
-        if not os.path.exists(tesseract_dir):
-            tesseract_dir = os.path.join(main_script_dir, "Tesseract")
-
-        tesseract_path = os.path.join(tesseract_dir, "tesseract.exe")
-        self.tessdata_dir = os.path.abspath(os.path.join(tesseract_dir, "tessdata")).replace("\\", "/")
-
-        # Explicitly set TESSDATA_PREFIX environment variable (forward slashes prevent C++ path quote issues)
+        from core.paths import resource_root
+        import threading
+        from collections import OrderedDict
+        tesseract_dir = resource_root() / "Tesseract"
+        self.tessdata_dir = str(tesseract_dir / "tessdata").replace("\\", "/")
         os.environ["TESSDATA_PREFIX"] = self.tessdata_dir
-        pytesseract.pytesseract.tesseract_cmd = tesseract_path
+        self.tesseract_path = str(tesseract_dir / "tesseract.exe")
+        pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
+        self.timeout_seconds = 4.0
+        self.cache_ttl = 0.75
+        self._cache = OrderedDict()
+        self._cache_lock = threading.RLock()
+        self._local = threading.local()
+        self.metrics = {"calls": 0, "cache_hits": 0, "seconds": 0.0}
 
-        if status_callback:
-            status_callback("Tesseract OCR initialized")
+    @property
+    def last_error(self):
+        return getattr(self._local, "error", "")
+
+    def invalidate_cache(self):
+        with self._cache_lock:
+            self._cache.clear()
+
+    def diagnostics(self):
+        return {"tesseract": os.path.isfile(self.tesseract_path),
+                "english_data": os.path.isfile(os.path.join(self.tessdata_dir, "eng.traineddata")),
+                "path": self.tesseract_path, "timeout_seconds": self.timeout_seconds}
 
     def update_status(self, message):
         """Update status via callback if available"""
         if self.status_callback:
             self.status_callback(message)
 
-    def extract_text(self, image, config=None):
-        """
-        Extract text from image using Tesseract
-        Args:
-            image: PIL Image object
-            config: Custom Tesseract config string (optional)
-        Returns:
-            Raw text string from OCR
-        """
+    def _ensure_pil_image(self, image):
+        """Ensure input image is a PIL Image object (converts numpy arrays if needed)"""
+        if image is None:
+            return None
+        if not isinstance(image, Image.Image):
+            try:
+                import numpy as np
+                if isinstance(image, np.ndarray):
+                    if image.ndim == 3 and image.shape[2] == 3:
+                        image = Image.fromarray(np.uint8(image)).convert('RGB')
+                    elif image.ndim == 2:
+                        image = Image.fromarray(np.uint8(image)).convert('L')
+                    else:
+                        image = Image.fromarray(np.uint8(image))
+            except ImportError:
+                pass
+        return image
+
+    def extract_text(self, image, config=None, fresh=False):
+        import hashlib
+        import time
+        self._local.error = ""
         try:
+            image = self._ensure_pil_image(image)
             if image is None:
+                self._local.error = "No image"
                 return ""
-
-            tess_config = f'--tessdata-dir {self.tessdata_dir}'
-            if config:
-                if '--tessdata-dir' not in config:
-                    tess_config = f'{tess_config} {config}'
-                else:
-                    tess_config = config
-
-            text = pytesseract.image_to_string(image, config=tess_config)
-            return text
-        except Exception as e:
-            self.update_status(f"OCR error: {str(e)}")
+            # pytesseract uses shlex(posix=False) on Windows, preserving quotes
+            # inside argv. Use TESSDATA_PREFIX instead of a split config path.
+            tess_config = config or ""
+            key = (image.size, image.mode, tess_config,
+                   hashlib.blake2b(image.tobytes(), digest_size=16).digest())
+            with self._cache_lock:
+                now = time.monotonic()
+                cached = self._cache.get(key)
+                if not fresh and cached and now-cached[0] < self.cache_ttl:
+                    self.metrics["cache_hits"] += 1
+                    return cached[1]
+                started = time.monotonic()
+                self.metrics["calls"] += 1
+                try:
+                    text = pytesseract.image_to_string(image, config=tess_config, timeout=self.timeout_seconds)
+                finally:
+                    self.metrics["seconds"] += time.monotonic()-started
+                if text.strip():
+                    self._cache[key] = (time.monotonic(), text)
+                    self._cache.move_to_end(key)
+                    while len(self._cache) > 32:
+                        self._cache.popitem(last=False)
+                return text
+        except Exception as exc:
+            self._local.error = str(exc)
+            self.update_status(f"OCR error: {exc}")
             return ""
+
+    def extract_pet_text(self, image):
+        """Read the small pet stat region as a text block, not a full page."""
+        image = self._ensure_pil_image(image)
+        if isinstance(image, Image.Image):
+            image = image.resize(
+                (image.width * 3, image.height * 3), Image.Resampling.LANCZOS
+            )
+        return self.extract_text(image, config="--psm 6 --oem 1", fresh=True)
+
+    def extract_pet_reading(self, image):
+        """Fresh EP39 text and word confidence from the same Tesseract pass."""
+        import time
+        self._local.error = ""
+        try:
+            image = self._ensure_pil_image(image)
+            if image is None:
+                self._local.error = "No image"
+                return "", ()
+            image = image.resize((image.width * 3, image.height * 3), Image.Resampling.LANCZOS)
+            with self._cache_lock:
+                started = time.monotonic()
+                self.metrics["calls"] += 1
+                try:
+                    data = pytesseract.image_to_data(
+                        image, config="--psm 6 --oem 1", output_type=pytesseract.Output.DICT,
+                        timeout=self.timeout_seconds,
+                    )
+                finally:
+                    self.metrics["seconds"] += time.monotonic() - started
+            lines, words = {}, []
+            for index, token in enumerate(data["text"]):
+                token = token.strip()
+                if not token:
+                    continue
+                line = tuple(data[key][index] for key in ("page_num", "block_num", "par_num", "line_num"))
+                lines.setdefault(line, []).append(token)
+                words.append((token, float(data["conf"][index])))
+            return "\n".join(" ".join(tokens) for tokens in lines.values()), tuple(words)
+        except Exception as exc:
+            self._local.error = str(exc)
+            self.update_status(f"OCR error: {exc}")
+            return "", ()
 
     def extract_numbers(self, image):
-        """
-        Extract numbers from image using Tesseract with optimized config
-        Optimized for reading item counts (format: X / Y)
-        Args:
-            image: PIL Image object
-        Returns:
-            Raw text string from OCR, optimized for digits
-        """
-        try:
-            if image is None:
-                return ""
-
-            # Convert to grayscale and enhance contrast to help distinguish similar digits
-            from PIL import ImageEnhance, ImageFilter
-            
-            # Convert to grayscale
-            if image.mode != 'L':
-                image = image.convert('L')
-            
-            # Enhance contrast
-            enhancer = ImageEnhance.Contrast(image)
-            image = enhancer.enhance(2.0)
-            
-            # Sharpen image
-            image = image.filter(ImageFilter.SHARPEN)
-            
-            # Tesseract config optimized for numbers
-            custom_config = f'--tessdata-dir {self.tessdata_dir} --psm 7 --oem 1 -c tessedit_char_whitelist=0123456789/ '
-            text = pytesseract.image_to_string(image, config=custom_config)
-            return text
-        except Exception as e:
-            self.update_status(f"OCR number extraction error: {str(e)}")
+        from PIL import ImageEnhance, ImageFilter
+        image = self._ensure_pil_image(image)
+        if image is None:
             return ""
-
+        image = ImageEnhance.Contrast(image.convert('L')).enhance(2.0).filter(ImageFilter.SHARPEN)
+        return self.extract_text(image, '--psm 7 --oem 1 -c tessedit_char_whitelist=0123456789/')
 
     def parse_stellar_text(self, text):
         """
@@ -119,12 +168,29 @@ class OCREngine:
     def parse_arrival_text(self, text):
         """
         Parse text for arrival skill format
-        Expected format: Two stats with values (no "Stellar" text)
+        Expected format: Two stats with values
         """
-        # TODO: Implement arrival skill text parsing
-        # This will need to detect two stats and their values
-        return {}
+        if not text:
+            return {}
+        cleaned_text = re.sub(r'([A-Za-z\s\.]+)\s4(\d)', r'\1 +\2', text)
+        cleaned_text = cleaned_text.replace(',', '.')
+        lines = cleaned_text.strip().split('\n')
+        parsed = {}
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            match = re.search(r'(.+?)\s*[\+]?\s*(\d+)', line)
+            if match:
+                stat_name = match.group(1).replace('.', '').strip()
+                try:
+                    val = int(match.group(2))
+                    parsed[stat_name] = val
+                except ValueError:
+                    pass
+        return parsed
 
     def find_numbers(self, text):
         """Find all numbers in text"""
         return re.findall(r"\d+", text)
+

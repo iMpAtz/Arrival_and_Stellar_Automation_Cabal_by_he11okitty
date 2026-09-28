@@ -9,25 +9,7 @@ import json
 import os
 import sys
 from automation.macro_automation import MacroAutomation
-
-_A = {
-    "primary": "#1f6aa5", "success": "#2fa572", "danger": "#d9534f",
-    "warning": "#e8a317", "purple": "#7c3aed", "muted": "#888888",
-    "surface2": "#333333",
-}
-
-
-def _section_header(parent, title, color=None):
-    color = color or _A["primary"]
-    header = ctk.CTkFrame(parent, fg_color=color, corner_radius=0, height=32)
-    header.pack(fill=tk.X)
-    header.pack_propagate(False)
-    ctk.CTkLabel(
-        header, text=title,
-        font=ctk.CTkFont("Segoe UI", 11, "bold"),
-        text_color="#ffffff", anchor="w"
-    ).pack(side=tk.LEFT, padx=12, pady=4)
-    return header
+from ui.theme import ACCENT as _A, section_header as _section_header
 
 
 class MacroTab:
@@ -43,6 +25,7 @@ class MacroTab:
             status_callback=main_window.update_status,
             bot_core=main_window.bot_core,
         )
+        self.automation.stopped_callback = self.on_stopped
 
         # 6 Coordinate data storage & UI variables
         self.click_coords = [None] * 6
@@ -121,7 +104,11 @@ class MacroTab:
                 width=120, height=28,
                 font=ctk.CTkFont("Segoe UI", 10, "bold"),
                 fg_color=_A["surface2"], button_color=_A["primary"],
-                dropdown_fg_color="#333333",
+                button_hover_color="#1a5a8e",
+                dropdown_fg_color=_A["surface2"],
+                dropdown_hover_color=_A["primary"],
+                dropdown_text_color=_A["text"],
+                text_color=_A["text"],
             ).pack(side=tk.RIGHT, padx=(0, 6))
 
             ctk.CTkButton(
@@ -213,22 +200,28 @@ class MacroTab:
 
         def capture_click():
             try:
-                mouse.wait(button='left')
-                x, y = mouse.get_position()
+                point = self.main_window.bot_core.wait_for_mouse_click(mouse)
+                if point is None:
+                    return
+                x, y = point
                 rel_x, rel_y, success = self.main_window.game_connector.convert_to_window_coords(x, y)
-                if success:
-                    self.click_coords[index] = (rel_x, rel_y)
-                    self.automation.set_coord(index, (rel_x, rel_y))
-                    self.click_coord_vars[index].set(f"({rel_x}, {rel_y})")
-                    self.main_window.update_status(f"Position {index + 1} set at ({rel_x}, {rel_y})")
-                else:
-                    messagebox.showerror("Error", "Failed to convert coordinates")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to capture click: {str(e)}")
-            finally:
-                self.main_window.root.config(cursor="")
 
-        threading.Thread(target=capture_click, daemon=True).start()
+                def on_captured():
+                    if success:
+                        self.click_coords[index] = (rel_x, rel_y)
+                        self.automation.set_coord(index, (rel_x, rel_y))
+                        self.click_coord_vars[index].set(f"({rel_x}, {rel_y})")
+                        self.main_window.update_status(f"Position {index + 1} set at ({rel_x}, {rel_y})")
+                    else:
+                        messagebox.showerror("Error", "Failed to convert coordinates")
+
+                self.main_window.post_ui(on_captured)
+            except Exception as e:
+                self.main_window.post_ui(lambda err=str(e): messagebox.showerror("Error", f"Failed to capture click: {err}"))
+            finally:
+                self.main_window.post_ui(lambda: self.main_window.root.config(cursor=""))
+
+        self.main_window.bot_core.register_calibration(capture_click)
 
     def clear_coords(self):
         """Reset all coordinates."""
@@ -244,6 +237,10 @@ class MacroTab:
     # ──────────────────────────────────────────────────────────
     def start_automation(self):
         """Pass configuration to MacroAutomation and start loop."""
+        if not self.main_window.set_running_tool("Macro", self.automation):
+            messagebox.showwarning("Busy", "Another automation is already running!")
+            return
+
         # Update 6 click coords config
         for idx in range(6):
             self.automation.set_coord(idx, self.click_coords[idx])
@@ -257,13 +254,40 @@ class MacroTab:
             self.automation.set_delays(c_delay, l_delay)
         except ValueError:
             messagebox.showerror("Invalid Input", "Please enter valid numeric values for delays.")
+            self.main_window.clear_running_tool()
             return
 
-        self.automation.start()
+        self.btn_start.configure(state="disabled")
+        self.btn_stop.configure(state="normal")
+
+        if not self.automation.start():
+            self.main_window.clear_running_tool()
+            self.btn_start.configure(state="normal")
+            self.btn_stop.configure(state="disabled")
 
     def stop_automation(self):
         """Stop Macro automation loop."""
         self.automation.stop()
+        self.main_window.clear_running_tool()
+        self.btn_start.configure(state="normal")
+        self.btn_stop.configure(state="disabled")
+
+    def emergency_stop(self):
+        """Emergency stop called by main window or ESC."""
+        def do_stop():
+            self.stop_automation()
+        if threading.current_thread() is threading.main_thread():
+            do_stop()
+        else:
+            self.main_window.post_ui(do_stop)
+
+    def on_stopped(self):
+        """Callback when macro loop finishes naturally or is stopped."""
+        def ui_stopped():
+            self.btn_start.configure(state="normal")
+            self.btn_stop.configure(state="disabled")
+            self.main_window.clear_running_tool()
+        self.main_window.post_run_ui(ui_stopped)
 
     # ──────────────────────────────────────────────────────────
     # Config Save / Load
@@ -279,8 +303,8 @@ class MacroTab:
         }
         try:
             path = self._get_config_path()
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(config_data, f, indent=2)
+            from core.profiles import atomic_json
+            atomic_json(path, config_data)
             self.main_window.update_status("Macro config saved successfully!")
             messagebox.showinfo("Config Saved", "Macro configuration has been saved.")
         except Exception as e:

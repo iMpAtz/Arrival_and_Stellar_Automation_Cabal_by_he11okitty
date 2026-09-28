@@ -10,30 +10,12 @@ import re
 import json
 from data.arrival_data import get_offensive_skills, get_defensive_skills, get_stat_variations
 from automation.arrival_automation import ArrivalAutomation
+from ui.theme import ACCENT as _A, section_header as _section_header
 import os
 from datetime import datetime
 import sys
 
 # Accent colors (shared with main_window)
-_A = {
-    "primary": "#1f6aa5", "success": "#2fa572", "danger": "#d9534f",
-    "warning": "#e8a317", "info": "#17a2b8", "surface2": "#333333",
-    "muted": "#888888",
-}
-
-
-def _section_header(parent, title, color=None):
-    """Reusable section header inside a card."""
-    color = color or _A["primary"]
-    header = ctk.CTkFrame(parent, fg_color=color, corner_radius=0, height=32)
-    header.pack(fill=tk.X)
-    header.pack_propagate(False)
-    ctk.CTkLabel(
-        header, text=title,
-        font=ctk.CTkFont("Segoe UI", 11, "bold"),
-        text_color="#ffffff", anchor="w",
-    ).pack(side=tk.LEFT, padx=12, pady=4)
-    return header
 
 
 class ArrivalTab:
@@ -333,24 +315,29 @@ class ArrivalTab:
 
         def capture_click():
             try:
-                mouse.wait(button='left')
-                x, y = mouse.get_position()
+                point = self.main_window.bot_core.wait_for_mouse_click(mouse)
+                if point is None:
+                    return
+                x, y = point
                 rel_x, rel_y, success = self.main_window.game_connector.convert_to_window_coords(x, y)
 
-                if success:
-                    self.apply_button_coords = (rel_x, rel_y)
-                    self.automation.set_apply_button(self.apply_button_coords)
-                    self.apply_coord_var.set(f"({rel_x}, {rel_y})")
-                    self.main_window.update_status(f"Apply button set at ({rel_x}, {rel_y})")
-                    self._check_enable_start()
-                else:
-                    messagebox.showerror("Error", "Failed to convert coordinates")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to capture click: {str(e)}")
-            finally:
-                self.main_window.root.config(cursor="")
+                def on_captured():
+                    if success:
+                        self.apply_button_coords = (rel_x, rel_y)
+                        self.automation.set_apply_button(self.apply_button_coords)
+                        self.apply_coord_var.set(f"({rel_x}, {rel_y})")
+                        self.main_window.update_status(f"Apply button set at ({rel_x}, {rel_y})")
+                        self._check_enable_start()
+                    else:
+                        messagebox.showerror("Error", "Failed to convert coordinates")
 
-        threading.Thread(target=capture_click, daemon=True).start()
+                self.main_window.post_ui(on_captured)
+            except Exception as e:
+                self.main_window.post_ui(lambda err=str(e): messagebox.showerror("Error", f"Failed to capture click: {err}"))
+            finally:
+                self.main_window.post_ui(lambda: self.main_window.root.config(cursor=""))
+
+        self.main_window.bot_core.register_calibration(capture_click)
 
     def set_change_button(self):
         """Set the change button coordinates."""
@@ -369,28 +356,34 @@ class ArrivalTab:
 
         def capture_click():
             try:
-                mouse.wait(button='left')
-                x, y = mouse.get_position()
+                point = self.main_window.bot_core.wait_for_mouse_click(mouse)
+                if point is None:
+                    return
+                x, y = point
                 rel_x, rel_y, success = self.main_window.game_connector.convert_to_window_coords(x, y)
 
-                if success:
-                    self.change_button_coords = (rel_x, rel_y)
-                    self.automation.set_change_button(self.change_button_coords)
-                    self.change_coord_var.set(f"({rel_x}, {rel_y})")
-                    self.main_window.update_status(f"Change button set at ({rel_x}, {rel_y})")
-                    self._check_enable_start()
-                else:
-                    messagebox.showerror("Error", "Failed to convert coordinates")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to capture click: {str(e)}")
-            finally:
-                self.main_window.root.config(cursor="")
+                def on_captured():
+                    if success:
+                        self.change_button_coords = (rel_x, rel_y)
+                        self.automation.set_change_button(self.change_button_coords)
+                        self.change_coord_var.set(f"({rel_x}, {rel_y})")
+                        self.main_window.update_status(f"Change button set at ({rel_x}, {rel_y})")
+                        self._check_enable_start()
+                    else:
+                        messagebox.showerror("Error", "Failed to convert coordinates")
 
-        threading.Thread(target=capture_click, daemon=True).start()
+                self.main_window.post_ui(on_captured)
+            except Exception as e:
+                self.main_window.post_ui(lambda err=str(e): messagebox.showerror("Error", f"Failed to capture click: {err}"))
+            finally:
+                self.main_window.post_ui(lambda: self.main_window.root.config(cursor=""))
+
+        self.main_window.bot_core.register_calibration(capture_click)
 
     def define_area(self):
         """Define the OCR area using the shared area selector."""
         def area_callback(area):
+            area = self.main_window.game_connector.screen_to_client_area(area)
             self.area = area
             self.automation.set_area(area)
             self._check_enable_start()
@@ -411,9 +404,10 @@ class ArrivalTab:
     def save_config(self):
         """Save configuration to JSON file."""
         config_data = {
+            "schema_version": 2,
             "apply_button_coords": list(self.apply_button_coords) if self.apply_button_coords else None,
             "change_button_coords": list(self.change_button_coords) if self.change_button_coords else None,
-            "area": list(self.area) if self.area else None,
+            "area": self.area if self.area else None,
             "off_stat": self.off_stat.get(),
             "off_var": self.off_var.get(),
             "off_stat2": self.off_stat2.get(),
@@ -429,8 +423,8 @@ class ArrivalTab:
         try:
             path = self._get_config_path()
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(config_data, f, indent=2)
+            from core.profiles import atomic_json
+            atomic_json(path, config_data)
             self.main_window.update_status("Arrival Skill config saved successfully!")
             messagebox.showinfo("Config Saved", "Arrival Skill configuration has been saved.")
         except Exception as e:
@@ -456,7 +450,7 @@ class ArrivalTab:
                 self.change_coord_var.set(f"({self.change_button_coords[0]}, {self.change_button_coords[1]})")
 
             if data.get("area"):
-                self.area = tuple(data["area"])
+                self.area = data["area"]
                 self.automation.set_area(self.area)
 
             if data.get("off_stat"):
@@ -580,7 +574,7 @@ class ArrivalTab:
                 messagebox.showerror("Error", f"Please select a minimum value for {stat_name}.")
                 self.main_window.clear_running_tool()
                 return
-            value_match = re.search(r'(\d+)', variation)
+            value_match = re.search(r'(\d+)', variation.replace(',', ''))
             if value_match:
                 off_val = int(value_match.group(1))
                 desired_stats['offensive'].append((stat_name, off_val, variation))
@@ -594,7 +588,7 @@ class ArrivalTab:
                 messagebox.showerror("Error", f"Please select a minimum value for {stat_name}.")
                 self.main_window.clear_running_tool()
                 return
-            value_match = re.search(r'(\d+)', variation)
+            value_match = re.search(r'(\d+)', variation.replace(',', ''))
             if value_match:
                 off_val = int(value_match.group(1))
                 desired_stats['offensive'].append((stat_name, off_val, variation))
@@ -608,7 +602,7 @@ class ArrivalTab:
                 messagebox.showerror("Error", f"Please select a minimum value for {stat_name}.")
                 self.main_window.clear_running_tool()
                 return
-            value_match = re.search(r'(\d+)', variation)
+            value_match = re.search(r'(\d+)', variation.replace(',', ''))
             if value_match:
                 off_val = int(value_match.group(1))
                 desired_stats['offensive'].append((stat_name, off_val, variation))
@@ -622,7 +616,7 @@ class ArrivalTab:
                 messagebox.showerror("Error", f"Please select a minimum value for {stat_name}.")
                 self.main_window.clear_running_tool()
                 return
-            value_match = re.search(r'(\d+)', variation)
+            value_match = re.search(r'(\d+)', variation.replace(',', ''))
             if value_match:
                 def_val = int(value_match.group(1))
                 desired_stats['defensive'].append((stat_name, def_val, variation))
@@ -636,7 +630,7 @@ class ArrivalTab:
                 messagebox.showerror("Error", f"Please select a minimum value for {stat_name}.")
                 self.main_window.clear_running_tool()
                 return
-            value_match = re.search(r'(\d+)', variation)
+            value_match = re.search(r'(\d+)', variation.replace(',', ''))
             if value_match:
                 def_val = int(value_match.group(1))
                 desired_stats['defensive'].append((stat_name, def_val, variation))
@@ -669,7 +663,17 @@ class ArrivalTab:
 
     def on_target_found(self):
         """Called when target stat is found."""
-        self.generate_summary("target_found")
+        def ui_target_found():
+            self.btn_start.configure(state="normal")
+            self.btn_stop.configure(state="disabled")
+            self.main_window.clear_running_tool()
+            self.generate_summary("target_found")
+            messagebox.showinfo("Success", "Desired stats found! Automation stopped.")
+
+        if hasattr(self.main_window, "root") and self.main_window.root:
+            self.main_window.post_run_ui(ui_target_found)
+        else:
+            ui_target_found()
 
     def generate_summary(self, reason):
         """Generate and save summary to file."""

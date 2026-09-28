@@ -5,6 +5,11 @@ from ui.main_window import MainWindow
 
 def main():
     """Main entry point for the unified game automation tool"""
+    import sys
+    if "--self-test" in sys.argv:
+        from core.self_test import run
+        run()
+        return
     print("Starting Unified Game Automation Tool...")
 
     # Enable Windows DPI Awareness to prevent coordinate shifting in PyInstaller executables

@@ -4,7 +4,7 @@
 import time
 import re
 from tkinter import messagebox
-from data.arrival_data import get_offensive_skills, get_defensive_skills, get_base_stat_name
+from data.arrival_data import get_offensive_skills, get_defensive_skills, get_base_stat_name, get_base_stat_lookup, get_all_base_stat_names
 from core.base_automation import BaseAutomation
 
 
@@ -112,80 +112,21 @@ class ArrivalAutomation(BaseAutomation):
         print(f"Raw OCR text: {repr(raw_text)}")
 
         # Fix OCR misreading + as 4 (only when there's no + sign already)
-        import re
         cleaned_text = re.sub(r'([A-Za-z\s\.]+)\s4(\d)', r'\1 +\2', raw_text)
 
         # Fix OCR misreading dots as commas
-        cleaned_text = cleaned_text.replace(',', '.')
+        from core.observations import normalize_numbers
+        cleaned_text = normalize_numbers(cleaned_text)
 
         # Parse for arrival skill format (dual stats, no "Stellar" text)
         return self.parse_arrival_text(cleaned_text)
 
     def parse_arrival_text(self, text):
-        """
-        Parse text for arrival skill format
-        Expected format: Two stats with values (no "Stellar" text)
-        Example:
-        Add. Damage        +45
-        HP Absorb Up       +2%
-
-        Special handling for long arrival skill names that get cut off:
-        - "Arrival Skill Cool time decreas," -> "Arrival Skill Cool Time decreased."
-        - "Arrival Skill Duration" -> "Arrival Skill Duration Increase"
-        """
-        current_stats = {}
-
-        # First, handle special cases for arrival skills with truncated names
-        current_stats.update(self.handle_arrival_skill_special_cases(text))
-
-        # Split text into lines for normal processing
-        lines = text.strip().split('\n')
-
-        # Look for stat patterns in each line
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-
-            # Skip lines that are already handled by special cases
-            if self.is_arrival_skill_line(line):
-                continue
-
-            # Try to match stat patterns: "Stat Name +Value" or "Stat Name Value"
-            # Handle both percentage and numeric values
-            patterns = [
-                r'(.+?)\s*\+(\d+)%',  # "Stat Name +5%"
-                r'(.+?)\s*\+(\d+)',   # "Stat Name +45"
-                r'(.+?)\s*(\d+)%',    # "Stat Name 5%"
-                r'(.+?)\s*(\d+)',     # "Stat Name 45"
-            ]
-
-            for pattern in patterns:
-                match = re.search(pattern, line)
-                if match:
-                    stat_name = match.group(1).strip()
-                    value_str = match.group(2).strip()
-
-                    # Clean up stat name
-                    stat_name = stat_name.replace('.', '').strip()
-
-                    # Try to match against known stats
-                    matched_stat = self.match_stat_name(stat_name)
-                    if matched_stat:
-                        try:
-                            value = int(value_str)
-                            current_stats[matched_stat] = value
-                        except ValueError:
-                            continue
-                    else:
-                        # Track unmapped stats for summary
-                        if '%' in pattern:
-                            value_str += '%'
-                        unmapped_key = f"{stat_name} +{value_str}"
-                        self.unmapped_ocr_counter[unmapped_key] = self.unmapped_ocr_counter.get(unmapped_key, 0) + 1
-                    break
-
-        return current_stats
+        from core.observations import parse_stats
+        observation = parse_stats(text, get_all_base_stat_names())
+        for warning in observation.warnings:
+            self.unmapped_ocr_counter[warning] = self.unmapped_ocr_counter.get(warning, 0) + 1
+        return {stat.name: stat.value for stat in observation.stats}
 
     def handle_arrival_skill_special_cases(self, text):
         """
@@ -193,25 +134,35 @@ class ArrivalAutomation(BaseAutomation):
         Returns a dictionary of detected arrival skills with or without values
         """
         special_stats = {}
-        text_lower = text.lower()
+        lines = (text or "").split('\n')
 
-        # Case 1: Arrival Skill Cool Time decreased - with value extraction
-        if ('arrival' in text_lower and 'cool' in text_lower and 'time' in text_lower) or \
-           ('arrival skill cool time decreas' in text_lower):
-            # Try to extract the numeric value (supports both +15s, -15, 15s, 15 formats)
-            # Note: OCR often reads this as "-15" but it should be treated as positive value
-            value_match = re.search(r'[-+]?\s*(\d+)\s*s?', text_lower)
-            if value_match:
-                value = abs(int(value_match.group(1)))  # Use abs() to convert negative to positive
-                special_stats["Arrival Skill Cool Time decreased."] = value
-            else:
-                # If no value found, still mark as detected but with None
-                special_stats["Arrival Skill Cool Time decreased."] = None
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            line_lower = line.lower()
+            # Case 1: Skill Cool Time decreased - with line-scoped value extraction
+            # Look for Skill Cool Time decreased (cut down arrival requirement)
+            if ('cool' in line_lower and 'time' in line_lower) or \
+               ('skill cool time' in line_lower) or \
+               ('cool time decreas' in line_lower):
+                # Look for numbers specifically on the cool time line
+                value_match = re.search(r'[-+]?\s*(\d+)\s*s?', line_lower)
+                if value_match:
+                    value = abs(int(value_match.group(1)))  # Use abs() to convert negative to positive
+                    special_stats["Skill Cool Time decreased."] = value
+                else:
+                    special_stats["Skill Cool Time decreased."] = None
 
-        # Case 2: Arrival Skill Duration Increase
-        elif ('arrival' in text_lower and 'duration' in text_lower) or \
-             ('arrival skill duration' in text_lower):
-            special_stats["Arrival Skill Duration Increase"] = None
+            # Case 2: Arrival Skill Buff Time UP / Duration Increase
+            elif ('buff' in line_lower and 'time' in line_lower) or \
+                 ('duration' in line_lower):
+                value_match = re.search(r'[-+]?\s*(\d+)\s*s?', line_lower)
+                if value_match:
+                    value = abs(int(value_match.group(1)))
+                    special_stats["Arrival Skill Buff Time UP"] = value
+                else:
+                    special_stats["Arrival Skill Buff Time UP"] = None
 
         return special_stats
 
@@ -219,92 +170,61 @@ class ArrivalAutomation(BaseAutomation):
         """
         Check if a line contains arrival skill text that should be skipped in normal processing
         """
-        line_lower = line.lower()
-        return ('arrival' in line_lower and ('cool' in line_lower or 'duration' in line_lower))
+        line_lower = (line or "").strip().lower()
+        return ('cool' in line_lower and 'time' in line_lower) or \
+               ('buff' in line_lower and 'time' in line_lower) or \
+               ('duration' in line_lower)
 
     def match_stat_name(self, detected_name):
-        """Match detected stat name to known arrival skill stats"""
-        from data.arrival_data import get_all_base_stat_names
+        """Match detected stat name to known arrival skill stats (O(1) dict lookup with fallback)"""
+        detected_normalized = detected_name.lower().replace(' ', '').replace('.', '')
 
-        detected_lower = detected_name.lower().replace(' ', '').replace('.', '')
+        lookup = get_base_stat_lookup()
+        if detected_normalized in lookup:
+            return lookup[detected_normalized]
 
-        # Try exact matches first
+        # Partial match fallback
         for known_stat in get_all_base_stat_names():
             known_lower = known_stat.lower().replace(' ', '').replace('.', '')
-            if detected_lower == known_lower:
-                return known_stat
-
-        # Try partial matches
-        for known_stat in get_all_base_stat_names():
-            known_lower = known_stat.lower().replace(' ', '').replace('.', '')
-            if detected_lower in known_lower or known_lower in detected_lower:
+            if detected_normalized in known_lower or known_lower in detected_normalized:
                 return known_stat
 
         return None
 
     def reroll_loop(self, desired_stats):
-        """Main reroll loop for arrival skill automation"""
-        self.update_status("▶️ Starting arrival skill automation...")
-        self.update_status(f"⏱️ Using delay: {self.delay_ms}ms between actions")
-
-        iteration_count = 0
-
-        # Pre-compute stat categories
-        offensive_base_stats = set(get_base_stat_name(stat) for stat in get_offensive_skills())
-        defensive_base_stats = set(get_base_stat_name(stat) for stat in get_defensive_skills())
-
-        # First click the Change button to remove current option
-        self.protected_click(self.change_button_coords, label="Change")
-        if not self.safe_sleep_ms(self.delay_ms):
+        from core.fsm import VerifiedReroll
+        from core.observations import parse_stats, evaluate
+        constraints = [(get_base_stat_name(name), minimum)
+                       for group in (desired_stats or {}).values()
+                       for name, minimum, _ in group]
+        if not constraints:
+            self.core.stop("no_targets")
             return
 
-        while self.running:
-            if self.stop_event.is_set():
-                break
-            if self.core:
-                self.core.heartbeat("arrival-main-loop")
-            iteration_count += 1
+        def observe():
+            image = self.game_connector.capture_area_bitblt(self.area)
+            self.last_image = image
+            raw = self.ocr_engine.extract_text(image, fresh=True) if image is not None else ""
+            return parse_stats(raw, get_all_base_stat_names())
 
-            # Click Apply button to apply a new option
-            self.protected_click(self.apply_button_coords, label="Apply")
+        def decide(observation):
+            for stat in observation.stats:
+                key = f"{stat.name} +{stat.value}"
+                self.stat_counter[key] = self.stat_counter.get(key, 0) + 1
+            return evaluate(observation, constraints)
+
+        def act():
+            if not self.protected_click(self.change_button_coords, "Change"):
+                return False
             if not self.safe_sleep_ms(self.delay_ms):
-                break  # Wait for game to update
+                return False
+            return self.protected_click(self.apply_button_coords, "Apply")
 
-            # Capture screenshot using BitBlt
-            screenshot = self.game_connector.capture_area_bitblt(self.area)
-            if screenshot is None:
-                self.update_status("Failed to capture screen, retrying...")
-                if not self.safe_sleep_ms(self.delay_ms):
-                    break
-                continue
-
-            # Detect text in the screenshot
-            current_stats = self.detect_text_in_image(screenshot)
-
-            if current_stats:
-                # Track stats for summary
-                for stat, value in current_stats.items():
-                    stat_key = f"{stat} +{value}"
-                    self.stat_counter[stat_key] = self.stat_counter.get(stat_key, 0) + 1
-
-                # Log detected stats
-                stat_list = [f"{stat}: {value}" for stat, value in current_stats.items()]
-                if stat_list:
-                    self.update_status(f"Roll #{iteration_count}: " + " | ".join(stat_list))
-            else:
-                self.update_status(f"Roll #{iteration_count}: No stats detected")
-
-            # Check if we have desired stats
-            if self.check_desired_stats(current_stats, desired_stats):
-                self.update_status("🎉🎉🎉 SUCCESS! DESIRED STATS FOUND! 🎉🎉🎉")
-                self.stop()
-                messagebox.showinfo("Success", "Desired stats found! Automation stopped.")
-                break
-
-            # If desired stats not found, click the Change button to reroll
-            self.protected_click(self.change_button_coords, label="Change")
-            if not self.safe_sleep_ms(self.delay_ms):
-                break
+        def matched():
+            if self.target_found_callback:
+                self.target_found_callback()
+        VerifiedReroll(self, observe, decide, act, matched, self.delay_ms).run()
+        self.running = False
 
     def check_desired_stats(self, current_stats, desired_stats):
         """
@@ -328,14 +248,10 @@ class ArrivalAutomation(BaseAutomation):
                     if stat_value is None:
                         # Special case: arrival skill detected but value unavailable due to UI collision
                         self.update_status(f"🎉 FOUND: {display_stat_name} detected!")
-                        self.update_status(f"⚠️ Note: Cannot verify value due to UI collision - please check manually")
-                        self.stop()
-                        messagebox.showinfo("Found it!", f"{display_stat_name} detected!\n\nNote: Cannot read value due to UI collision.\nPlease verify the value manually.")
-                        return True
+                        self.update_status("⚠️ Note: Cannot verify value due to UI collision - please check manually")
+                        return False
                     elif stat_value >= min_value:
                         self.update_status(f"✅ MATCH: Found {display_stat_name} with value {stat_value} (target: {min_value}+)")
-                        if self.target_found_callback:
-                            self.target_found_callback()
                         return True  # Found one! Stop immediately
 
         # Check all defensive stats (if specified)
@@ -348,14 +264,10 @@ class ArrivalAutomation(BaseAutomation):
                     if stat_value is None:
                         # Special case: arrival skill detected but value unavailable due to UI collision
                         self.update_status(f"🎉 FOUND: {display_stat_name} detected!")
-                        self.update_status(f"⚠️ Note: Cannot verify value due to UI collision - please check manually")
-                        self.stop()
-                        messagebox.showinfo("Found it!", f"{display_stat_name} detected!\n\nNote: Cannot read value due to UI collision.\nPlease verify the value manually.")
-                        return True
+                        self.update_status("⚠️ Note: Cannot verify value due to UI collision - please check manually")
+                        return False
                     elif stat_value >= min_value:
                         self.update_status(f"✅ MATCH: Found {display_stat_name} with value {stat_value} (target: {min_value}+)")
-                        if self.target_found_callback:
-                            self.target_found_callback()
                         return True  # Found one! Stop immediately
 
         return False  # No match found
@@ -412,6 +324,5 @@ class ArrivalAutomation(BaseAutomation):
             for stat_key, count in sorted(self.unmapped_ocr_counter.items(), key=lambda x: x[1], reverse=True):
                 self.update_status(f"  • {stat_key} × {count}")
 
-        # Reset counters for next run
-        self.stat_counter = {}
-        self.unmapped_ocr_counter = {}
+        self.update_status("📊 Roll statistics summary logged to terminal.")
+

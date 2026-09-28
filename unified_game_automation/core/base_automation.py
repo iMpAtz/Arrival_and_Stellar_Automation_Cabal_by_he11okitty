@@ -31,8 +31,9 @@ class BaseAutomation:
     def start(self):
         if not self.core:
             return False
+        if not self.core.start(self):
+            return False
         self.running = True
-        self.core.start()
         return True
 
     def stop(self):
@@ -65,8 +66,11 @@ class BaseAutomation:
             return False
         if not self.game_connector.is_connected() and not self.game_connector.connect_to_game():
             self.update_status("Game is not connected")
+            self.core.stop("disconnected")
             return False
         ok = self.game_connector.click_at_position(coords)
+        if not ok and self.core:
+            self.core.stop("action_failed")
         if ok and label:
             self.update_status(f"Click {label}")
         if ok and post_delay_ms is not None:

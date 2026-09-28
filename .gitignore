@@ -26,3 +26,9 @@ ocr_output/
 Thumbs.db
 
 !Tessereact/
+
+# Runtime reports, profile backups and review screenshots
+unified_game_automation/summaries/
+*.json.bak
+!requirements.txt
+!requirements-build.txt

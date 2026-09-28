@@ -1,121 +1,123 @@
-<<<<<<< HEAD
-# CABAL Automation Tool — v6.0.5
+# CABAL Automation Tool - v6.1.0
 
-> **Developed by Hello Kitty Gang** 
-> *USE AT YOUR OWN RISK! Provided for educational and automation utility purposes.*
+Developed by Hello Kitty Gang. Windows desktop automation for CABAL Online.
 
-A comprehensive, multi-tab Python automation tool for CABAL Online. The application integrates high-performance screen capture (GDI BitBlt), optical character recognition (Tesseract OCR), template-based computer vision (OpenCV), and background input automation wrapped inside a modern dark-themed CustomTkinter GUI.
+## What changed
 
----
+The seven existing tools remain available: Arrival, Stellar, Heil, Mail, Pet, Image Clicker, and Macro. A new **Workbench** provides diagnostics, game-window selection, calibration previews, screenshot replay, dry run, run limits, and portable profiles.
 
-## 📚 Technical Stack & Libraries Overview
+The main window now opens on Workbench, with a wider layout, a persistent connection refresh action, a visible active-tool status pill, and an always-available **STOP ALL** control. Repeated Start/Stop controls include hover guidance, while diagnostics and observation output are grouped into read-only cards so inspection is clearly separated from live actions.
 
-Below is the complete summary of all libraries and modules used in this project, explaining their technical role and internal logic.
+- Each run owns a unique ID and cancellation event. Restart is refused until its previous worker exits.
+- Escape signals cancellation immediately; GUI cleanup runs through the UI event queue.
+- Stellar and Arrival require two consistent, valid OCR readings before evaluating or rerolling. Four unsuccessful observations stop with `needs_review`, without additional clicks.
+- Pet Standard checks OCR before each action. EP39 uses Convert, OK, and Cancel: confirmed targets are cancelled before stopping; clear non-target text may continue even for new stat names. Unclear/blank OCR is retried up to three reads, then stops with the game popup open and a bot warning.
+- OCR recognizes grouped thousands, uses complete stat names, and distinguishes Penetration / Ignore Penetration / Cancel Ignore Penetration.
+- Tesseract uses the bundled language directory through `TESSDATA_PREFIX`, including paths containing spaces. Calls have a four-second timeout.
+- Exact-pixel OCR caching has a short expiry and bounded size. Live reroll verification always requests a fresh OCR reading; actions invalidate cached results.
+- Every mouse path passes through an input guard. Image Clicker defers its clicks for the entire duration of a shared-tool run.
+- Image Clicker supports per-template scale ranges (default 1.0-1.0), rejects flat templates, shares captures within a scan, and invalidates those captures after a click.
+- Run reports retain statistics and stop reasons. Optional review screenshots are disabled by default.
 
-| Library / Module | Category | Primary Function | Technical Logic & How It Works |
-| :--- | :--- | :--- | :--- |
-| **`customtkinter`** | GUI Framework | Modern Dark UI Interface | Extends Tkinter widgets with rounded corners, custom themes, and dark-mode styling (`CTkTabview`, `CTkButton`, `CTkFrame`, `CTkEntry`). Manages event loops and async UI state updates without UI freeze. |
-| **`tkinter` / `ttk`** | Base GUI Toolkit | Native Canvas & Windows | Provides core Tkinter foundation (`StringVar`, `DoubleVar`), root window event loop (`Tk`), dialog boxes, and transparent fullscreen selection canvas overlay for defining screen capture areas (`area_selector.py`). |
-| **`pytesseract`** | Optical Character Recognition | Text & Digit Extraction | Python wrapper for the embedded Tesseract OCR engine (`Tesseract/tesseract.exe`). Converts preprocessed images into string data or numbers using specialized Page Segmentation Modes (`--psm 7 --oem 1`). |
-| **`cv2` (OpenCV)** | Computer Vision | Template Matching | Uses `cv2.matchTemplate()` with normalized cross-correlation (`cv2.TM_CCOEFF_NORMED`) to search for sub-image patterns (pet icons, UI buttons) inside full game screenshots. |
-| **`numpy`** | Array Processing | Image Matrix Operations | High-performance N-dimensional array processing required by OpenCV for template matching, thresholding, and array slicing of screenshot pixels. |
-| **`win32gui` / `win32con` / `win32ui`** (`pywin32`) | Windows API Bindings | Screen Capture & Window Control | Direct bindings to Windows GDI (`gdi32.dll`) and User32 (`user32.dll`). Captures game framebuffers via **GDI BitBlt** (`BitBlt`, `CreateDCFromHandle`) directly from GPU buffer without needing window focus. Sends raw background mouse/keyboard messages via `PostMessage`. |
-| **`pywinauto`** | Windows Automation | Game Window Attachment | Connects to `D3D Window` process class instances, validates window visibility/state, and converts screen coordinates to client window relative coordinates (`game_connector.py`). |
-| **`PIL` / `Pillow`** | Image Processing | Contrast, Grayscale & Crop | Converts raw GDI bitmap byte arrays (`BGRX`) to RGB PIL Images. Performs image preprocessing prior to OCR (grayscale conversion, `ImageEnhance.Contrast(2.0)`, `ImageFilter.SHARPEN`), and handles UI image rendering (`CTkImage`). |
-| **`keyboard` & `mouse`** | Low-Level Input Hooks | Global Hotkeys & Mouse Capture | Hooks system-level Windows input events (`keyboard.add_hotkey("F5")`) for global start/stop/emergency hotkeys, and tracks mouse coordinates for click target selection. |
-| **`threading` & `queue`** | Concurrency | Asynchronous Automation Loops | Executes long-running automation tasks in background daemon threads (`threading.Thread`). Uses `threading.Event` for clean thread cancellation, `threading.RLock` for state synchronization, and a watchdog thread in `BotCore`. |
-| **`PyInstaller`** | Executable Packaging | Single `.exe` Distribution | Bundles Python runtime, standard libraries, compiled C-extensions (`cv2`, `PIL`), binaries (`Tesseract/tesseract.exe`), and assets (`logo.ico`, `logo.png`) into a standalone Windows binary (`main_updated.spec`). |
+## Run from source
 
----
+The dependency versions in this checkout were exercised with **Windows and Python 3.14.4**. Use a virtual environment; older Python versions have not been validated against these pins.
 
-## 🏗️ System Architecture & Logic Flow
-
-```mermaid
-flowchart TD
-    UI["CustomTkinter Main Window (GUI Thread)"] -->|User Action / Hotkey| BC["BotCore (Runtime Controller)"]
-    BC -->|Launch Worker| Worker["Automation Worker (Stellar / Arrival / Pet / ImageClicker)"]
-    
-    subgraph Engine ["Core Engine Layer"]
-        Worker -->|Request Screenshot| GC["GameConnector (Win32 GDI BitBlt)"]
-        GC -->|Get Window DC & BitBlt| Game["CABAL Game Window (D3D Window)"]
-        GC -->|Raw BGRX Buffer| PIL["Pillow Image Processing"]
-        
-        PIL -->|Enhanced Grayscale Image| OCR["OCREngine (PyTesseract)"]
-        PIL -->|Pixel Array| CV["OpenCV (Template Matching)"]
-        
-        OCR -->|Extracted Text / Numbers| Worker
-        CV -->|Target Coordinates (X, Y)| Worker
-    end
-    
-    Worker -->|Send Background Click / Press| GC
-    Worker -->|Status Logs| UI
-```
-
-### 1. Game Attachment & BitBlt Screen Capture (`game_connector.py`)
-- **Connection**: `GameConnector` searches for active Windows handles matching class name `"D3D Window"` (CABAL Online client).
-- **Framebuffer Capture**: Instead of using desktop print-screen, it requests a Device Context handle (`win32gui.GetWindowDC`) and executes GDI `BitBlt` (`windll.gdi32.BitBlt`). This reads pixels directly from the window's GPU memory buffer, allowing accurate screenshot capture even if other windows overlap.
-- **Coordinate Conversion**: Converts screen coordinates to client-relative coordinates (`GetClientRect`, `ClientToScreen`) for precise click placement.
-
-### 2. Image Preprocessing & OCR Extraction (`ocr_engine.py`)
-- **Preprocessing Pipeline**: Converts the cropped screenshot area to grayscale (`L` mode), applies contrast enhancement (`ImageEnhance.Contrast(2.0)`), and sharpens pixel boundaries (`ImageFilter.SHARPEN`).
-- **Tesseract Parsing**:
-  - For text (Skill names, "Penetration"): Runs standard `image_to_string`.
-  - For digits (Skill force "+15", item counts `X / Y`): Uses custom config `--psm 7 --oem 1 -c tessedit_char_whitelist=0123456789/ ` to eliminate non-digit misreadings.
-- **Regex Parsing**: Extracts option names and numerical values from raw text output.
-
-### 3. OpenCV Computer Vision (`image_clicker_automation.py`, `pet_automation.py`)
-- **Template Matching**: Loads reference images (`logo.png`, pet icons, UI buttons) as NumPy arrays.
-- **Scan Cycle**: Performs `cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)` across specified screen regions. When match confidence exceeds the user-configured threshold (e.g. `0.80`), it computes the bounding box center `(X, Y)` and executes click actions.
-
-### 4. Background Threading & Watchdog (`bot_core.py`)
-- **Concurrency**: All automation loops execute in background worker threads to keep the CustomTkinter GUI responsive at 60 FPS.
-- **Watchdog Timer**: `BotCore` runs a watchdog monitoring thread checking loop heartbeats every second. If an automation loop hangs for >8 seconds, `BotCore` triggers safety cleanup and alerts the user.
-- **Emergency Stop**: Pressing emergency key shortcuts or clicking "Stop" sets `stop_event`, cleanly interrupting waiting sleep cycles (`BotCore.sleep(seconds, step=0.05)`).
-
----
-
-## 🛠️ Main Automation Modules
-
-1. **Stellar Imprint OCR Tab**: Automatically rerolls Stellar stats until requested stat phrase (e.g., "Penetration") and force value (e.g., "+15") are detected by OCR.
-2. **Arrival Skill OCR Tab**: Automatically trains Arrival skills, reading skill levels and names via OCR to stop upon reaching target configuration.
-3. **Heil Automation Tab**: Automated click sequence runner for Heil activities with customizable delays and click position presets.
-4. **Mail Automation Tab**: Automatic mail collecting/sending bot with configurable item slot offsets.
-5. **Pet Automation Tab**: Detects pet untrain icons via OpenCV template matching and performs automated pet skill resets.
-6. **Image Clicker Tab**: Independent continuous multi-image detection bot. Scans specified screen zones for target template images and clicks upon visual match with customizable cooldowns.
-
----
-
-## 🚀 How to Build & Run
-
-### Running from Source
-1. **Prerequisites**: Python 3.10+ installed on Windows.
-2. **Run as Administrator**: Right-click PowerShell/CMD and select **Run as Administrator** (required for Windows API window attachment).
-3. **Start Application**:
-   ```powershell
-   python unified_game_automation/main.py
-   ```
-
-### Building Standalone Executable (.exe)
-To compile the complete application into a single standalone `.exe` using PyInstaller:
 ```powershell
-pyinstaller .\main_updated.spec
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python unified_game_automation/main.py
 ```
-The compiled output will be generated inside the `dist/` directory as `HelloK1TTY_Automation_V6.0.5.exe`.
 
----
 
-## 📋 General Instructions & Best Practices
+Run the tool at the same privilege level as the game. The app does not silently elevate itself.
 
-1. **Run as Administrator**: Windows security restricts sending low-level window events to DirectX games unless the automation tool runs with Administrator privileges.
-2. **In-Game Font Setting**: If using custom game fonts, set in-game font to **Tahoma** (*Esc -> Options -> Preferences -> Font*) for optimal Tesseract OCR accuracy.
-3. **Main Display Usage**: Keep the game window on your primary monitor to avoid multi-monitor DPI scaling coordinate offsets.
-4. **Log Files**: Application logs are automatically saved to `<YOUR_FOLDER_THAT_SAVE_THE_PROGRAM>\summaries` for tracking OCR readings and troubleshooting.
+## First use
 
----
+1. Open **Workbench**, refresh the available game windows, and attach the intended client.
+2. Configure click positions, detection regions, and target stats in the tool's tab.
+3. Use **Preview game + regions** to check alignment. Red marks the detection region; yellow marks click targets.
+4. Use **Read live crop** to inspect raw text, parsed stats, and the decision without clicking. For Pet, choose Pet OCR or Pet EP39.
+5. Optionally enable **Dry run**. It suppresses all mouse input through the shared connector. Reroll tools stop after a proposed cycle; Mail, Heil, Macro and Image Clicker run until stopped or limited.
+6. Set limits and apply them while idle. Defaults are 30 minutes and 10,000 input attempts per run. Escape stops shared tools and Image Clicker; F6 toggles Image Clicker.
 
-## 👤 Credits & Disclaimers
-- **Maintained By**: **Hello Kitty Gang (PlayCabal Guild)**.
-- **Disclaimer**: *This tool is provided for educational and private convenience purposes. Users assume full responsibility for using automation tools in compliance with game service terms.*
-=======
+Stellar and Arrival now **inspect the current result before changing it**. Start with the configured stat region visible. An unreadable dialog is not permission to reroll. Pet also needs a readable configured region during its sequence; unexpected scenes stop for review rather than being dismissed automatically.
 
-This project is powered by TesseractOCR and pywin32
+A stop request is nonblocking. A worker already inside a native operation exits when that operation returns or times out. The app will not start a replacement shared run while the old worker remains active.
+
+## Calibration and profiles
+
+New OCR regions are stored in client-relative coordinates with the calibrated client size. Moving the window is supported; resizing requires recalibration. Existing list-based regions remain supported as absolute screen coordinates. Existing click positions remain window-relative and are checked against client bounds before native input.
+
+Save settings in each tool's tab before using **Export saved settings**. Profile export copies referenced images to an adjacent assets folder. Keep that folder with the exported JSON. Missing assets are reported instead of silently omitted.
+
+Import validates the profile version and allowed config destinations, copies assets into the local data directory, and backs up overwritten JSON files as `.json.bak`. Restart the app to load imported settings. Active runs cannot import profiles.
+
+## Replay without game input
+
+Open a saved **crop** in Workbench, or use the command line:
+
+```powershell
+python unified_game_automation/replay.py crop.png --tool Arrival --target Defense --minimum 200
+python unified_game_automation/replay.py crop.png --tool Stellar --target Penetration --minimum 15
+```
+
+Replay uses the same parser and evaluator as the live reroll workers. It returns `matched`, `absent`, or `unknown`. Replay does not run a game's action sequence.
+
+Workbench also provides **Pet OCR** (Standard) and **Pet EP39**. EP39 previews only its three click positions and reads crops using EP39 text-quality rules. Results describe the next action; a single target reading still requires confirmation during a live run. Workbench inspection never clicks or dismisses the game popup.
+
+Pet settings save only OCR configuration. Older profiles retain their OCR targets, regions, and click positions; obsolete detector settings are ignored. EP39 requires the Cancel position before starting.
+
+## Reports
+
+Source runs write reports under `unified_game_automation/summaries/`; packaged runs write beside the executable under `summaries/`. Each `run_<id>.json` contains the tool, stop reason, elapsed time, action/observation counts, bounded transition history, and available statistics. Stellar and Arrival also retain their human-readable tab summaries.
+
+With review screenshots enabled, a failed Stellar/Arrival verification saves at most one `review_<id>.png` per run. OCR metrics in Workbench show invocation count, exact-cache hits, and total extraction time.
+
+## Architecture
+
+```text
+main.py -> MainWindow / tool tabs / Workbench
+                 -> start, cancel, queued UI events
+              BotCore + RunSession
+                 ->
+    VerifiedReroll (Stellar/Arrival) | gated Pet sequence | simple click sequences
+                 ->
+    GameConnector input guard / client region resolution / GDI capture
+                 ->
+    Tesseract + structured observations | scaled OpenCV templates
+```
+
+Image Clicker retains an independent worker and session. Its clicks share the same guard. `core/observations.py` is the shared parsing contract; `core/replay.py` exposes it to Workbench and the CLI. `core/profiles.py` handles portable bundles and atomic JSON writes.
+
+## Verification
+
+```powershell
+python -B unified_game_automation/tests/test_runtime_upgrade.py
+python -B unified_game_automation/tests/test_pet_ocr_matching.py
+python -B unified_game_automation/tests/test_ocr_fixes.py
+python -B unified_game_automation/tests/test_bug_fixes.py
+python -B unified_game_automation/tests/test_ui_smoke.py
+```
+
+The runtime tests cover cancellation/restart, watchdog behavior, input suppression, unknown-frame handling, stat aliases and thousands, reports, cache invalidation, real bundled Tesseract extraction, region movement, portable profiles, and scaled templates. The GUI smoke test constructs hidden windows with game attachment and hotkeys disabled.
+
+Live game behavior, a long-duration GDI resource soak require testing against the intended game client. Synthetic and mocked tests do not establish those properties.
+
+## Build
+
+```powershell
+python -m pip install -r requirements-build.txt
+python -m PyInstaller --noconfirm --workpath build/v6_1_0 --distpath dist/v6_1_0 main_updated.spec
+```
+
+Output: `dist/v6_1_0/HelloK1TTY_Automation_V6.1.0.exe`.
+
+The build bundles Tesseract, language data, GUI assets and runtime dependencies. It excludes unrelated installed ML/data-analysis packages and does not embed personal tab JSON settings. The older `main.spec` remains a legacy build definition; use `main_updated.spec` for this release.
+
+```powershell
+.\dist\v6_1_0\HelloK1TTY_Automation_V6.1.0.exe --self-test
+```
+
+The packaged self-test constructs a hidden UI and checks real OCR with game attachment, hotkeys, and game input disabled.

@@ -7,6 +7,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('unified_game_automation/Tesseract', 'Tesseract'),
+        ('unified_game_automation/data', 'data'),
     ],
     hiddenimports=[
         'PIL',
@@ -18,7 +19,10 @@ a = Analysis(
         'win32ui',
         'threading',
         'tkinter.ttk',
-        'pytesseract'
+        'pytesseract',
+        'customtkinter',
+        'darkdetect',
+        'numpy',
     ],
     hookspath=[],
     hooksconfig={},

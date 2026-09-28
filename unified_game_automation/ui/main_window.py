@@ -8,6 +8,7 @@ from tkinter import ttk
 import keyboard
 import time
 import threading
+import queue
 from datetime import datetime
 from PIL import Image, ImageTk
 import os
@@ -21,7 +22,9 @@ from ui.heil_tab import HeilTab
 from ui.mail_tab import MailTab
 from ui.pet_tab import PetTab
 from ui.image_clicker_tab import ImageClickerTab
-from ui.macro_tab import MacroTab
+if "--without-macro" not in sys.argv:
+    from ui.macro_tab import MacroTab
+from ui.theme import ACCENT, status_pill
 
 # ──────────────────────────────────────────────────────────────
 # Monkey-patch: CTkScrollableFrame._check_if_valid_scroll
@@ -42,22 +45,6 @@ def _patched_check_if_valid_scroll(self, widget):
 ctk.CTkScrollableFrame._check_if_valid_scroll = _patched_check_if_valid_scroll
 
 # ──────────────────────────────────────────────────────────────
-# Color constants for manual accent overrides
-# ──────────────────────────────────────────────────────────────
-ACCENT = {
-    "primary":  "#1f6aa5",
-    "success":  "#2fa572",
-    "danger":   "#d9534f",
-    "warning":  "#e8a317",
-    "info":     "#17a2b8",
-    "purple":   "#7c3aed",
-    "surface":  "#2b2b2b",
-    "surface2": "#333333",
-    "muted":    "#888888",
-}
-
-
-# ──────────────────────────────────────────────────────────────
 # Lightweight Tooltip (no external package needed)
 # ──────────────────────────────────────────────────────────────
 class ToolTip:
@@ -72,39 +59,61 @@ class ToolTip:
         widget.bind("<Enter>", self._schedule)
         widget.bind("<Leave>", self._cancel)
         widget.bind("<ButtonPress>", self._cancel)
+        widget.bind("<Button-1>", self._cancel)
+        if hasattr(widget, "_canvas"):
+            try:
+                widget._canvas.bind("<Button-1>", self._cancel, add="+")
+            except Exception:
+                pass
+        widget._tooltip = self
 
     def _schedule(self, _event=None):
         self._cancel()
-        self._after_id = self.widget.after(self.delay, self._show)
+        try:
+            self._after_id = self.widget.after(self.delay, self._show)
+        except Exception:
+            self._after_id = None
 
     def _cancel(self, _event=None):
         if self._after_id:
-            self.widget.after_cancel(self._after_id)
+            try:
+                self.widget.after_cancel(self._after_id)
+            except Exception:
+                pass
             self._after_id = None
         self._hide()
 
     def _show(self):
         if self._tip_window:
             return
-        x = self.widget.winfo_rootx() + 20
-        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
-        self._tip_window = tw = tk.Toplevel(self.widget)
-        tw.wm_overrideredirect(True)
-        tw.wm_geometry(f"+{x}+{y}")
-        tw.attributes("-topmost", True)
-        label = tk.Label(
-            tw, text=self.text,
-            justify=tk.LEFT,
-            background="#1e1e1e", foreground="#e0e0e0",
-            relief=tk.SOLID, borderwidth=1,
-            font=("Segoe UI", 9),
-            padx=8, pady=4,
-        )
-        label.pack()
+        try:
+            # Guard against unmapped, hidden, or destroyed widgets
+            if not self.widget.winfo_exists() or not self.widget.winfo_ismapped():
+                return
+            x = self.widget.winfo_rootx() + 20
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+            self._tip_window = tw = tk.Toplevel(self.widget)
+            tw.wm_overrideredirect(True)
+            tw.wm_geometry(f"+{x}+{y}")
+            tw.attributes("-topmost", True)
+            label = tk.Label(
+                tw, text=self.text,
+                justify=tk.LEFT,
+                background="#1e1e1e", foreground="#e0e0e0",
+                relief=tk.SOLID, borderwidth=1,
+                font=("Segoe UI", 9),
+                padx=8, pady=4,
+            )
+            label.pack()
+        except Exception:
+            self._hide()
 
     def _hide(self):
         if self._tip_window:
-            self._tip_window.destroy()
+            try:
+                self._tip_window.destroy()
+            except Exception:
+                pass
             self._tip_window = None
 
 
@@ -114,19 +123,24 @@ class ToolTip:
 class MainWindow:
     def __init__(self):
         """Initialize the main tabbed window."""
+        self.macro_enabled = "--without-macro" not in sys.argv
 
         # ── CTk setup ──
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
+        self._ui_queue = queue.Queue()
+        self._closing = False
         self.root = ctk.CTk()
         self.root.title(
-            "CABAL Automation Tool — v6.0.5 By Hello Kitty Gang (Not for selling)"
+            "CABAL Automation Tool — v6.1.0"
         )
-        self.root.geometry("680x1020")
+        # The forms contain several paired controls; give them enough room to
+        # remain readable at 100% Windows scaling.
+        self.root.geometry("860x920")
         self.root.attributes("-topmost", True)
         self.root.resizable(True, True)
-        self.root.minsize(680, 800)
+        self.root.minsize(760, 720)
 
         # Set window icon (top-left title bar & taskbar)
         try:
@@ -156,6 +170,8 @@ class MainWindow:
         self.bot_core = BotCore()
         self.status_var = tk.StringVar(value="Initializing…")
         self.stats_text = tk.StringVar(value="Ready")
+        self.active_tool_var = tk.StringVar(value="IDLE")
+        self.connection_var = tk.StringVar(value="Checking")
         self.theme_var = tk.StringVar(value="dark")
 
         # For backwards compat with tab code that reads self.main_window.colors
@@ -185,12 +201,15 @@ class MainWindow:
         self.game_connector = GameConnector(self.update_status)
         self.ocr_engine = OCREngine(self.update_status)
         self.bot_core.set_status_callback(self.update_status)
+        self.game_connector.input_policy = self.bot_core.authorize_input
+        self.game_connector.on_action = self.ocr_engine.invalidate_cache
 
         # ESC emergency stop
         keyboard.add_hotkey("esc", self.emergency_stop)
 
         # Build UI
         self.create_ui()
+        self.root.after(40, self._pump_events)
 
         # Close handler
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -203,17 +222,17 @@ class MainWindow:
         style.theme_use("clam")
         style.configure(
             "Treeview",
-            background="#2b2b2b",
-            foreground="#e0e0e0",
-            fieldbackground="#2b2b2b",
+            background=ACCENT["panel"],
+            foreground=ACCENT["text"],
+            fieldbackground=ACCENT["panel"],
             borderwidth=0,
             font=("Segoe UI", 9),
             rowheight=26,
         )
         style.configure(
             "Treeview.Heading",
-            background="#333333",
-            foreground="#e0e0e0",
+            background=ACCENT["panel2"],
+            foreground=ACCENT["text"],
             font=("Segoe UI", 9, "bold"),
             borderwidth=0,
         )
@@ -229,15 +248,27 @@ class MainWindow:
         # Combobox dark style (used inside image clicker settings)
         style.configure(
             "TCombobox",
-            fieldbackground="#333333",
-            background="#3a3a3a",
-            foreground="#e0e0e0",
-            arrowcolor="#e0e0e0",
+            fieldbackground=ACCENT["input"],
+            background=ACCENT["panel2"],
+            foreground=ACCENT["text"],
+            arrowcolor=ACCENT["text"],
         )
-        self.root.option_add("*TCombobox*Listbox.background", "#333333")
-        self.root.option_add("*TCombobox*Listbox.foreground", "#e0e0e0")
-        self.root.option_add("*TCombobox*Listbox.selectBackground", ACCENT["primary"])
-        self.root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+        # ttk's readonly state can override the configure values. Explicitly
+        # map it so both the closed field and its popup keep readable text.
+        style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", ACCENT["input"]), ("disabled", ACCENT["panel2"])],
+            foreground=[("readonly", ACCENT["text"]), ("disabled", ACCENT["muted"])],
+            selectbackground=[("readonly", ACCENT["primary"])],
+            selectforeground=[("readonly", "#ffffff")],
+        )
+        # The popup is a native Tk Listbox created after the Combobox. These
+        # option patterns cover the class names used by Tk/ttk on Windows.
+        for pattern in ("*TCombobox*Listbox", "*Combobox*Listbox", "*Listbox"):
+            self.root.option_add(f"{pattern}.background", ACCENT["surface2"])
+            self.root.option_add(f"{pattern}.foreground", ACCENT["text"])
+            self.root.option_add(f"{pattern}.selectBackground", ACCENT["primary"])
+            self.root.option_add(f"{pattern}.selectForeground", "#ffffff")
 
     # ──────────────────────────────────────────────────────────
     # UI CREATION
@@ -264,34 +295,66 @@ class MainWindow:
             segmented_button_unselected_color=ACCENT["surface2"],
         )
         self.tabview.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
+        try:
+            self.tabview._segmented_button.configure(
+                height=36,
+                font=ctk.CTkFont("Segoe UI", 11, "bold"),
+            )
+        except Exception:
+            pass
 
         # Add tabs
+        # Put the safe inspection workspace first so a new user has a clear
+        # place to connect, calibrate and test before opening a live tool.
         tab_names = [
-            "⚔ Arrival",
-            "⭐ Stellar",
-            "🎯 Heil",
-            "📧 Mail",
-            "🐾 Pet",
-            "🖱 Img Clicker",
-            "🕹️ Macro",
+            "Workbench",
+            "Arrival",
+            "Stellar",
+            "Heil",
+            "Mail",
+            "Pet",
+            "Img Clicker",
         ]
+        if self.macro_enabled:
+            tab_names.append("Macro")
         for name in tab_names:
             self.tabview.add(name)
 
         # Create tab instances — each tab class receives the CTkFrame for its tab
-        self.arrival_tab = ArrivalTab(self.tabview.tab("⚔ Arrival"), self)
-        self.stellar_tab = StellarTab(self.tabview.tab("⭐ Stellar"), self)
-        self.heil_tab = HeilTab(self.tabview.tab("🎯 Heil"), self)
-        self.mail_tab = MailTab(self.tabview.tab("📧 Mail"), self)
-        self.pet_tab = PetTab(self.tabview.tab("🐾 Pet"), self)
-        self.image_clicker_tab = ImageClickerTab(self.tabview.tab("🖱 Img Clicker"), self)
-        self.macro_tab = MacroTab(self.tabview.tab("🕹️ Macro"), self)
+        self.arrival_tab = ArrivalTab(self.tabview.tab("Arrival"), self)
+        self.stellar_tab = StellarTab(self.tabview.tab("Stellar"), self)
+        self.heil_tab = HeilTab(self.tabview.tab("Heil"), self)
+        self.mail_tab = MailTab(self.tabview.tab("Mail"), self)
+        self.pet_tab = PetTab(self.tabview.tab("Pet"), self)
+        self.image_clicker_tab = ImageClickerTab(self.tabview.tab("Img Clicker"), self)
+        if self.macro_enabled:
+            self.macro_tab = MacroTab(self.tabview.tab("Macro"), self)
+
+        from ui.workbench_tab import WorkbenchTab
+        self.workbench_tab = WorkbenchTab(self.tabview.tab("Workbench"), self)
+        self._add_tab_tooltips()
 
         # Status section
         self.create_status_section(self.main_frame)
 
         # Footer
         self.create_footer(self.main_frame)
+
+    def _add_tab_tooltips(self):
+        """Give repeated controls a consistent explanation across every tab."""
+        tabs = [
+            self.arrival_tab, self.stellar_tab, self.heil_tab,
+            self.mail_tab, self.pet_tab, self.image_clicker_tab,
+        ]
+        if self.macro_enabled:
+            tabs.append(self.macro_tab)
+        for tab in tabs:
+            start = getattr(tab, "btn_start", None)
+            stop = getattr(tab, "btn_stop", None)
+            if start:
+                ToolTip(start, "Start this tool after its setup checklist is complete")
+            if stop:
+                ToolTip(stop, "Request a clean stop and keep the current run report")
 
     # ──────────────────────────────────────────────────────────
     # HEADER
@@ -329,10 +392,17 @@ class MainWindow:
             font=ctk.CTkFont("Segoe UI", 16, "bold"),
         ).pack(side=tk.LEFT)
 
+        ctk.CTkLabel(
+            row1,
+            text="  Safe, inspectable game tools",
+            font=ctk.CTkFont("Segoe UI", 10),
+            text_color=ACCENT["text_dim"],
+        ).pack(side=tk.LEFT, padx=(4, 0))
+
         # Version badge
         ctk.CTkLabel(
             row1,
-            text=" v6.0.5 ",
+            text=" v6.1.0 ",
             font=ctk.CTkFont("Segoe UI", 10, "bold"),
             fg_color=ACCENT["primary"],
             corner_radius=6,
@@ -396,6 +466,36 @@ class MainWindow:
         self.theme_btn.pack(side=tk.LEFT)
         ToolTip(self.theme_btn, "Switch between dark and light themes")
 
+        self.reconnect_btn = ctk.CTkButton(
+            row2,
+            text="↻ Refresh Game",
+            font=ctk.CTkFont("Segoe UI", 11, "bold"),
+            fg_color=ACCENT["surface2"],
+            hover_color="#444444",
+            width=128, height=28, corner_radius=6,
+            command=self.auto_connect_to_game,
+        )
+        self.reconnect_btn.pack(side=tk.LEFT, padx=(6, 0))
+        ToolTip(self.reconnect_btn, "Find the visible D3D game window again")
+
+        self.active_tool_pill = status_pill(
+            row2, self.active_tool_var, ACCENT["surface2"]
+        )
+        self.active_tool_pill.pack(side=tk.LEFT, padx=(12, 0))
+
+        # Emergency stop is always visible in the standard layout.
+        self.stop_all_btn = ctk.CTkButton(
+            row2,
+            text="🛑 STOP ALL",
+            font=ctk.CTkFont("Segoe UI", 11, "bold"),
+            fg_color=ACCENT["danger"],
+            hover_color="#b93f3b",
+            width=110, height=28, corner_radius=6,
+            command=self.emergency_stop,
+        )
+        self.stop_all_btn.pack(side=tk.RIGHT, padx=(6, 0))
+        ToolTip(self.stop_all_btn, "Immediately cancel every automation (ESC)")
+
         # Mini mode (right side)
         self.mini_mode_btn = ctk.CTkButton(
             row2,
@@ -418,13 +518,18 @@ class MainWindow:
         card = ctk.CTkFrame(parent, corner_radius=10)
         card.pack(fill=tk.X, pady=(10, 0))
 
-        # Section label
+        # Section label and compact state marker.
+        heading = ctk.CTkFrame(card, fg_color="transparent")
+        heading.pack(fill=tk.X, padx=14, pady=(10, 4))
         ctk.CTkLabel(
-            card,
-            text="📊  Status & Stats",
-            font=ctk.CTkFont("Segoe UI", 12, "bold"),
-            anchor="w",
-        ).pack(fill=tk.X, padx=14, pady=(10, 4))
+            heading, text="📊  Run monitor",
+            font=ctk.CTkFont("Segoe UI", 12, "bold"), anchor="w",
+        ).pack(side=tk.LEFT)
+        self.status_indicator = ctk.CTkLabel(
+            heading, text="●  IDLE", text_color=ACCENT["success"],
+            font=ctk.CTkFont("Segoe UI", 10, "bold"),
+        )
+        self.status_indicator.pack(side=tk.RIGHT)
 
         # Progress bar (indeterminate when automation runs)
         self.progress_bar = ctk.CTkProgressBar(
@@ -446,7 +551,7 @@ class MainWindow:
         status_text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         ctk.CTkLabel(
-            status_text_frame, text="Current Status:",
+            status_text_frame, text="Current status",
             font=ctk.CTkFont("Segoe UI", 10),
             text_color=ACCENT["muted"], anchor="w",
         ).pack(fill=tk.X)
@@ -480,7 +585,7 @@ class MainWindow:
         stats_text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         ctk.CTkLabel(
-            stats_text_frame, text="Statistics:",
+            stats_text_frame, text="Run details",
             font=ctk.CTkFont("Segoe UI", 10),
             text_color=ACCENT["muted"], anchor="w",
         ).pack(fill=tk.X)
@@ -500,7 +605,8 @@ class MainWindow:
         """Emergency-stop footer bar."""
         footer = ctk.CTkFrame(
             parent, corner_radius=10,
-            fg_color=ACCENT["danger"],
+            fg_color=("#fee2e2", "#3b1f24"),
+            border_width=1, border_color=ACCENT["danger"],
         )
         footer.pack(fill=tk.X, pady=(10, 0))
 
@@ -510,15 +616,27 @@ class MainWindow:
         ctk.CTkLabel(
             inner, text="🚨",
             font=ctk.CTkFont("Segoe UI", 14),
-            text_color="#ffffff",
+            text_color=ACCENT["danger"],
         ).pack(side=tk.LEFT, padx=(0, 8))
 
         ctk.CTkLabel(
             inner,
-            text="Emergency Stop: Press ESC key to stop all automation",
+            text="Emergency stop",
             font=ctk.CTkFont("Segoe UI", 11, "bold"),
-            text_color="#ffffff",
+            text_color=ACCENT["text"],
         ).pack(side=tk.LEFT)
+        ctk.CTkLabel(
+            inner,
+            text="Press ESC or use STOP ALL. The action is immediate and safe to repeat.",
+            font=ctk.CTkFont("Segoe UI", 10),
+            text_color=ACCENT["text_dim"],
+        ).pack(side=tk.LEFT, padx=(10, 0))
+        ctk.CTkButton(
+            inner, text="STOP ALL", width=92, height=26, corner_radius=6,
+            font=ctk.CTkFont("Segoe UI", 10, "bold"),
+            fg_color=ACCENT["danger"], hover_color="#b93f3b",
+            command=self.emergency_stop,
+        ).pack(side=tk.RIGHT)
 
     # ──────────────────────────────────────────────────────────
     # TOGGLE HANDLERS
@@ -632,24 +750,57 @@ class MainWindow:
     # ──────────────────────────────────────────────────────────
     # STATUS
     # ──────────────────────────────────────────────────────────
-    def update_status(self, message):
-        """Update the status display with timestamp."""
+    def update_status(self, message, show_in_ui=True):
+        """Update the status display with timestamp. Verbose/noise logs are shown in terminal only."""
         formatted = str(message)
 
-        def ui_update():
-            self.status_var.set(formatted)
+        # Always print full output to terminal
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        try:
+            print(f"[{timestamp}] {formatted}")
+        except UnicodeEncodeError:
             try:
-                print(f"Status: {formatted}")
-            except UnicodeEncodeError:
-                try:
-                    print(
-                        f"Status: {formatted.encode('ascii', 'replace').decode('ascii')}"
-                    )
-                except Exception:
-                    pass
+                print(f"[{timestamp}] {formatted.encode('ascii', 'replace').decode('ascii')}")
+            except Exception:
+                pass
+
+        # Filter noise/diagnostic messages from the UI status label
+        is_noise = (
+            not show_in_ui
+            or formatted.startswith("[OCR Scan] Text:")
+            or formatted.startswith("OCR text:")
+            or formatted.startswith("Raw OCR text:")
+            or formatted.startswith("--- Detection Results")
+            or formatted.startswith("  • ")
+            or formatted.startswith("SUMMARY OF DETECTED STATS")
+            or formatted.startswith("Offensive Stats:")
+            or formatted.startswith("Defensive Stats:")
+            or formatted.startswith("Other Stats:")
+            or formatted.startswith("🔍 Unmapped Stats")
+            or formatted.startswith("[OCR Check #")
+            or formatted.startswith("[Loop #")
+        )
+
+        if is_noise:
+            return
+
+        # For multiline messages that aren't filtered out, keep only the first line on the UI label
+        ui_text = formatted.split("\n")[0].strip() if "\n" in formatted else formatted
+
+        def ui_update():
+            self.status_var.set(ui_text)
 
             active_tool = self.bot_core.active_tool()
             has_bar = hasattr(self, "progress_bar")
+            self.active_tool_var.set(active_tool or "IDLE")
+            pill_color = ACCENT["primary"] if active_tool else ACCENT["surface2"]
+            if hasattr(self, "active_tool_pill"):
+                self.active_tool_pill.configure(fg_color=pill_color)
+            if hasattr(self, "status_indicator"):
+                self.status_indicator.configure(
+                    text=(f"●  {active_tool.upper()}" if active_tool else "●  IDLE"),
+                    text_color=ACCENT["warning"] if active_tool else ACCENT["success"],
+                )
             if active_tool:
                 started_at = self.bot_core._started_at
                 elapsed = max(0, time.time() - started_at) if started_at else 0
@@ -668,13 +819,16 @@ class MainWindow:
         if threading.current_thread() is threading.main_thread():
             ui_update()
         else:
-            self.root.after(0, ui_update)
+            self.post_ui(ui_update)
 
     # ──────────────────────────────────────────────────────────
     # RUNNING TOOL (mutual exclusion)
     # ──────────────────────────────────────────────────────────
     def set_running_tool(self, tool_name, automation=None):
         """Set which tool is currently running (mutual exclusion)."""
+        if hasattr(self, "workbench_tab") and self.workbench_tab._busy:
+            self.update_status("Wait for the Workbench observation to finish")
+            return False
         return self.bot_core.begin_run(tool_name, automation=automation)
 
     def clear_running_tool(self):
@@ -685,43 +839,70 @@ class MainWindow:
     # EMERGENCY STOP
     # ──────────────────────────────────────────────────────────
     def emergency_stop(self):
-        """Emergency stop triggered by ESC key."""
-        # Always stop Image Clicker (independent of BotCore)
-        if hasattr(self, "image_clicker_tab"):
-            self.image_clicker_tab.emergency_stop()
-
-        if self.bot_core.is_busy():
-            self.update_status("🚨 EMERGENCY STOP — stopping active automation")
-            active_tool = self.bot_core.active_tool()
-            if active_tool == "Stellar System":
-                self.stellar_tab.emergency_stop()
-            elif active_tool == "Arrival Skill":
-                self.arrival_tab.emergency_stop()
-            elif active_tool == "Auto Mail Receive":
-                self.mail_tab.emergency_stop()
-            elif active_tool == "Heil Auto":
-                self.heil_tab.emergency_stop()
-            elif active_tool == "Pet Untrain":
-                self.pet_tab.emergency_stop()
-            elif active_tool == "Macro":
-                self.macro_tab.stop_automation()
-
-            self.bot_core.emergency_stop()
-            self.clear_running_tool()
-
-            self.root.lift()
-            self.root.attributes("-topmost", True)
-            self.root.attributes("-topmost", False)
-
-    # ──────────────────────────────────────────────────────────
-    # CLOSE
-    # ──────────────────────────────────────────────────────────
-    def on_closing(self):
-        """Clean up when closing the application."""
-        if hasattr(self, "image_clicker_tab"):
-            self.image_clicker_tab.cleanup()
+        # Signal immediately from the hotkey thread. Widget cleanup is queued.
         self.bot_core.emergency_stop()
+        if hasattr(self, "image_clicker_tab"):
+            self.image_clicker_tab.automation.emergency_stop()
+        self.post_ui(self._reset_stopped_controls)
+
+    def _tool_tabs(self):
+        tabs = {"Stellar System": self.stellar_tab, "Arrival Skill": self.arrival_tab,
+                "Heil Auto": self.heil_tab, "Auto Mail Receive": self.mail_tab,
+                "Pet Untrain": self.pet_tab}
+        if self.macro_enabled:
+            tabs["Macro"] = self.macro_tab
+        return tabs
+
+    def _reset_stopped_controls(self):
+        for tab in list(self._tool_tabs().values()) + [self.image_clicker_tab]:
+            if not tab.automation.running:
+                tab.btn_start.configure(state="normal")
+                tab.btn_stop.configure(state="disabled")
+                if hasattr(tab, "_running"):
+                    tab._running = False
+
+    def post_ui(self, callback, *args):
+        if not self._closing:
+            self._ui_queue.put((callback, args))
+
+    def post_run_ui(self, callback, *args):
+        session = self.bot_core.session
+        def guarded():
+            if self.bot_core.session is session:
+                callback(*args)
+        self.post_ui(guarded)
+
+    def _pump_events(self):
+        if self._closing:
+            return
+        for _ in range(150):
+            try:
+                callback, args = self._ui_queue.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                callback(*args)
+            except Exception as exc:
+                print(f"UI event failed: {exc}")
+        while True:
+            try:
+                report = self.bot_core.completed_runs.get_nowait()
+            except queue.Empty:
+                break
+            if self.bot_core.session and report["run_id"] == self.bot_core.session.run_id:
+                self._reset_stopped_controls()
+                self.update_status(f'{report["tool"]}: {report["stop_reason"]} ({report["actions"]} actions)')
+        if self.image_clicker_tab._running and not self.image_clicker_tab.automation.running:
+            self.image_clicker_tab._running = False
+            self.image_clicker_tab.btn_start.configure(state="normal")
+            self.image_clicker_tab.btn_stop.configure(state="disabled")
+        self.root.after(40, self._pump_events)
+
+    def on_closing(self):
+        self.bot_core.emergency_stop()
+        self.image_clicker_tab.cleanup()
         keyboard.unhook_all()
+        self._closing = True
         self.root.destroy()
 
     def run(self):
@@ -845,25 +1026,49 @@ class MainWindow:
 
     def switch_to_mini_mode(self):
         """Switch the window layout to compact Mini Mode."""
-        self.normal_geometry = self.root.geometry()
-        self.main_frame.pack_forget()
+        try:
+            self.normal_geometry = self.root.geometry()
 
-        if self.mini_frame is None:
-            self.create_mini_ui()
-            is_topmost = self.root.attributes("-topmost")
-            self.update_topmost_button_ui(is_topmost)
+            # Dismiss any active or scheduled toolbar tooltips
+            for btn in (getattr(self, "mini_mode_btn", None), getattr(self, "topmost_btn", None), getattr(self, "theme_btn", None)):
+                if btn and hasattr(btn, "_tooltip"):
+                    btn._tooltip._cancel()
 
-        self.mini_frame.pack(fill=tk.BOTH, expand=True)
-        self.root.minsize(400, 170)
-        self.root.geometry("400x170")
-        self.auto_connect_to_game()
+            self.main_frame.pack_forget()
+
+            if self.mini_frame is None:
+                self.create_mini_ui()
+                is_topmost = self.root.attributes("-topmost")
+                self.update_topmost_button_ui(is_topmost)
+
+            self.mini_frame.pack(fill=tk.BOTH, expand=True)
+            self.root.minsize(420, 190)
+            self.root.geometry("440x200")
+
+            # Only auto connect if not already connected
+            if not self.game_connector.is_connected():
+                self.auto_connect_to_game()
+            else:
+                if hasattr(self, "mini_connection_indicator"):
+                    self.mini_connection_indicator.configure(text_color=ACCENT["success"])
+                    self.mini_connection_text.configure(text="Connected", text_color=ACCENT["success"])
+        except Exception as e:
+            print(f"Error entering mini mode: {e}")
 
     def switch_to_standard_mode(self):
         """Switch the window layout back to Standard Mode."""
-        if self.mini_frame:
-            self.mini_frame.pack_forget()
+        try:
+            if self.mini_frame:
+                self.mini_frame.pack_forget()
 
-        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
-        self.root.minsize(680, 800)
-        self.root.geometry(self.normal_geometry)
-        self.auto_connect_to_game()
+            self.main_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+            self.root.minsize(760, 720)
+            if hasattr(self, "normal_geometry") and self.normal_geometry:
+                self.root.geometry(self.normal_geometry)
+            else:
+                self.root.geometry("860x920")
+
+            if not self.game_connector.is_connected():
+                self.auto_connect_to_game()
+        except Exception as e:
+            print(f"Error entering standard mode: {e}")

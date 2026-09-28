@@ -29,6 +29,7 @@ class MacroAutomation(BaseAutomation):
         # Click stats
         self.total_loops = 0
         self.total_clicks = 0
+        self.stopped_callback = None
 
     def set_coord(self, index, coords):
         if 0 <= index < 6:
@@ -134,3 +135,8 @@ class MacroAutomation(BaseAutomation):
 
         self.running = False
         self.update_status(f"Macro stopped — Loops: {self.total_loops}, Total Clicks: {self.total_clicks}")
+        if hasattr(self, "stopped_callback") and self.stopped_callback:
+            try:
+                self.stopped_callback()
+            except Exception:
+                pass

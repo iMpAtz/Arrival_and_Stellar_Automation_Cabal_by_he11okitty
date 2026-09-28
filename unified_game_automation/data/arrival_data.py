@@ -10,7 +10,7 @@ KNOWN_SKILLS = [
     "Add. Damage",
     "Critical DMG.",
     "Ignore Resist Crit. DMG",
-    "Arrival Skill Cool Time decreased.",
+    "Skill Cool Time decreased.",
     "Ignore Resist Critical Rate",
     "Ignore Evasion",
     "Attack Rate",
@@ -53,7 +53,7 @@ OFFENSIVE_SKILLS = [
     "Add. Damage (2)",
     "Critical DMG.",
     "Ignore Resist Crit. DMG",
-    "Arrival Skill Cool Time decreased.",
+    "Skill Cool Time decreased.",
     "Ignore Resist Critical Rate",
     "Ignore Evasion",
     "Attack Rate (1)",
@@ -119,7 +119,7 @@ STAT_VARIATIONS = {
     "Add. Damage (2)": ["18", "36", "54", "72", "90"],
     "Critical DMG.": ["9%", "18%", "36%"],
     "Ignore Resist Crit. DMG": ["6%", "11%", "20%"],
-    "Arrival Skill Cool Time decreased.": ["15s", "30s", "60s", "120s"],
+    "Skill Cool Time decreased.": ["15s", "30s", "60s", "120s"],
     "Ignore Resist Critical Rate": ["1%", "2%"],
     "Ignore Evasion": ["100", "200", "300", "400", "500"],
     "Attack Rate (1)": ["100", "200", "300", "400", "500"],
@@ -184,4 +184,12 @@ def get_base_stat_name(display_name):
 
 def get_all_base_stat_names():
     """Get all unique base stat names for OCR detection"""
-    return list(set(KNOWN_SKILLS + [DISPLAY_TO_BASE.get(stat, stat) for stat in OFFENSIVE_SKILLS + DEFENSIVE_SKILLS]))
+    return _ALL_BASE_STATS
+
+_ALL_BASE_STATS = list(set(KNOWN_SKILLS + [DISPLAY_TO_BASE.get(stat, stat) for stat in OFFENSIVE_SKILLS + DEFENSIVE_SKILLS]))
+_BASE_STAT_LOOKUP = {s.lower().replace(' ', '').replace('.', ''): s for s in _ALL_BASE_STATS}
+
+def get_base_stat_lookup():
+    """Get pre-computed normalized stat string lookup dictionary (O(1) search)"""
+    return _BASE_STAT_LOOKUP
+

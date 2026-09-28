@@ -12,24 +12,7 @@ from automation.stellar_automation import StellarAutomation
 import os
 from datetime import datetime
 import sys
-
-_A = {
-    "primary": "#1f6aa5", "success": "#2fa572", "danger": "#d9534f",
-    "warning": "#e8a317", "info": "#17a2b8", "purple": "#7c3aed",
-    "surface2": "#333333", "muted": "#888888",
-}
-
-
-def _section_header(parent, title, color=None):
-    color = color or _A["primary"]
-    header = ctk.CTkFrame(parent, fg_color=color, corner_radius=0, height=32)
-    header.pack(fill=tk.X)
-    header.pack_propagate(False)
-    ctk.CTkLabel(
-        header, text=title,
-        font=ctk.CTkFont("Segoe UI", 11, "bold"),
-        text_color="#ffffff", anchor="w",
-    ).pack(side=tk.LEFT, padx=12, pady=4)
+from ui.theme import ACCENT as _A, section_header as _section_header
 
 
 class StellarTab:
@@ -192,25 +175,30 @@ class StellarTab:
                     return
                 x, y = pos
                 rel_x, rel_y, success = self.main_window.game_connector.convert_to_window_coords(x, y)
-                if success:
-                    self.imprint_button_coords = (rel_x, rel_y)
-                    self.automation.set_imprint_button(self.imprint_button_coords)
-                    self.imprint_coord_var.set(f"({rel_x}, {rel_y})")
-                    self.main_window.update_status(f"Imprint button set at ({rel_x}, {rel_y})")
-                    self._check_enable_start()
-                else:
-                    messagebox.showerror("Error", "Failed to convert coordinates")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to capture click: {str(e)}")
-            finally:
-                self.main_window.root.config(cursor="")
 
-        self.main_window.bot_core.register_thread("stellar-capture-imprint", capture_click, daemon=True)
+                def on_captured():
+                    if success:
+                        self.imprint_button_coords = (rel_x, rel_y)
+                        self.automation.set_imprint_button(self.imprint_button_coords)
+                        self.imprint_coord_var.set(f"({rel_x}, {rel_y})")
+                        self.main_window.update_status(f"Imprint button set at ({rel_x}, {rel_y})")
+                        self._check_enable_start()
+                    else:
+                        messagebox.showerror("Error", "Failed to convert coordinates")
+
+                self.main_window.post_ui(on_captured)
+            except Exception as e:
+                self.main_window.post_ui(lambda err=str(e): messagebox.showerror("Error", f"Failed to capture click: {err}"))
+            finally:
+                self.main_window.post_ui(lambda: self.main_window.root.config(cursor=""))
+
+        self.main_window.bot_core.register_calibration(capture_click)
 
     def define_area(self):
         self.main_window.bot_core.start()
 
         def area_callback(area):
+            area = self.main_window.game_connector.screen_to_client_area(area)
             self.area = area
             self.automation.set_area(area)
             self._check_enable_start()
@@ -233,8 +221,9 @@ class StellarTab:
             or_rows_data.append({"option": row['combo'].get().strip(), "min_value": row['entry'].get().strip()})
 
         config_data = {
+            "schema_version": 2,
             "imprint_button_coords": list(self.imprint_button_coords) if self.imprint_button_coords else None,
-            "area": list(self.area) if self.area else None,
+            "area": self.area if self.area else None,
             "match_mode": self.match_mode_var.get(),
             "single_option_name": self.combo_option_name.get().strip(),
             "single_option_min": self.entry_option_min_value.get().strip(),
@@ -244,8 +233,8 @@ class StellarTab:
         try:
             path = self._get_config_path()
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(config_data, f, indent=2)
+            from core.profiles import atomic_json
+            atomic_json(path, config_data)
             self.main_window.update_status("Stellar System config saved successfully!")
             messagebox.showinfo("Config Saved", "Stellar System configuration has been saved.")
         except Exception as e:
@@ -263,7 +252,7 @@ class StellarTab:
                 self.automation.set_imprint_button(self.imprint_button_coords)
                 self.imprint_coord_var.set(f"({self.imprint_button_coords[0]}, {self.imprint_button_coords[1]})")
             if data.get("area"):
-                self.area = tuple(data["area"])
+                self.area = data["area"]
                 self.automation.set_area(self.area)
             if data.get("match_mode"):
                 self.match_mode_var.set(data["match_mode"])
@@ -387,7 +376,17 @@ class StellarTab:
         self.main_window.clear_running_tool()
 
     def on_target_found(self):
-        self.generate_summary("target_found")
+        def ui_target_found():
+            self.btn_start.configure(state="normal")
+            self.btn_stop.configure(state="disabled")
+            self.main_window.clear_running_tool()
+            self.generate_summary("target_found")
+            messagebox.showinfo("Found it!", "Target option found! Automation stopped.")
+
+        if hasattr(self.main_window, "root") and self.main_window.root:
+            self.main_window.post_run_ui(ui_target_found)
+        else:
+            ui_target_found()
 
     def generate_summary(self, reason):
         try:

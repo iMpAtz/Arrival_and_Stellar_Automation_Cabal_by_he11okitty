@@ -34,6 +34,8 @@ def get_default_image_config():
         "file_path": "",
         "enabled": True,
         "threshold": 0.85,
+        "scale_min": 1.0,
+        "scale_max": 1.0,
         "search_area_name": "Full Screen",
         "click_type": "Left Click",
         "offset_x": 0,

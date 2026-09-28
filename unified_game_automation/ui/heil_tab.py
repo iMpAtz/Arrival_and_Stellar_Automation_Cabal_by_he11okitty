@@ -11,20 +11,7 @@ import json
 import os
 import sys
 from automation.heil_automation import HeilAutomation
-
-_A = {
-    "primary": "#1f6aa5", "success": "#2fa572", "danger": "#d9534f",
-    "warning": "#e8a317", "purple": "#7c3aed", "muted": "#888888",
-    "surface2": "#333333",
-}
-
-
-def _section_header(parent, title, color=None):
-    color = color or _A["primary"]
-    header = ctk.CTkFrame(parent, fg_color=color, corner_radius=0, height=32)
-    header.pack(fill=tk.X)
-    header.pack_propagate(False)
-    ctk.CTkLabel(header, text=title, font=ctk.CTkFont("Segoe UI", 11, "bold"), text_color="#ffffff", anchor="w").pack(side=tk.LEFT, padx=12, pady=4)
+from ui.theme import ACCENT as _A, section_header as _section_header
 
 
 class HeilTab:
@@ -184,40 +171,47 @@ class HeilTab:
 
         def capture_click():
             try:
-                mouse.wait(button='left')
-                x, y = mouse.get_position()
+                point = self.main_window.bot_core.wait_for_mouse_click(mouse)
+                if point is None:
+                    return
+                x, y = point
                 rel_x, rel_y, success = self.main_window.game_connector.convert_to_window_coords(x, y)
-                if success:
-                    coords = (rel_x, rel_y)
-                    if position_num == 1:
-                        self.click_coords_1 = coords
-                        self.automation.set_click_position_1(coords)
-                    elif position_num == 2:
-                        self.click_coords_2 = coords
-                        self.automation.set_click_position_2(coords)
-                    elif position_num == 3:
-                        self.click_coords_3 = coords
-                        self.automation.set_click_position_3(coords)
-                    elif position_num == 4:
-                        self.click_coords_4 = coords
-                        self.automation.set_click_position_4(coords)
-                    elif position_num == 5:
-                        self.click_coords_5 = coords
-                        self.automation.set_click_position_5(coords)
-                    coord_var.set(f"({rel_x}, {rel_y})")
-                    self.main_window.update_status(f"Position {position_num} set at ({rel_x}, {rel_y})")
-                    self._check_enable_start()
-                else:
-                    messagebox.showerror("Error", "Failed to convert coordinates")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to capture click: {str(e)}")
-            finally:
-                self.main_window.root.config(cursor="")
 
-        threading.Thread(target=capture_click, daemon=True).start()
+                def on_captured():
+                    if success:
+                        coords = (rel_x, rel_y)
+                        if position_num == 1:
+                            self.click_coords_1 = coords
+                            self.automation.set_click_position_1(coords)
+                        elif position_num == 2:
+                            self.click_coords_2 = coords
+                            self.automation.set_click_position_2(coords)
+                        elif position_num == 3:
+                            self.click_coords_3 = coords
+                            self.automation.set_click_position_3(coords)
+                        elif position_num == 4:
+                            self.click_coords_4 = coords
+                            self.automation.set_click_position_4(coords)
+                        elif position_num == 5:
+                            self.click_coords_5 = coords
+                            self.automation.set_click_position_5(coords)
+                        coord_var.set(f"({rel_x}, {rel_y})")
+                        self.main_window.update_status(f"Position {position_num} set at ({rel_x}, {rel_y})")
+                        self._check_enable_start()
+                    else:
+                        messagebox.showerror("Error", "Failed to convert coordinates")
+
+                self.main_window.post_ui(on_captured)
+            except Exception as e:
+                self.main_window.post_ui(lambda err=str(e): messagebox.showerror("Error", f"Failed to capture click: {err}"))
+            finally:
+                self.main_window.post_ui(lambda: self.main_window.root.config(cursor=""))
+
+        self.main_window.bot_core.register_calibration(capture_click)
 
     def define_ocr_area_message(self):
         def area_callback(area):
+            area = self.main_window.game_connector.screen_to_client_area(area)
             self.ocr_area_message = area
             self.automation.set_ocr_area_message(area)
             self.main_window.update_status(f"OCR area (Inventory Message) defined: {area}")
@@ -238,19 +232,20 @@ class HeilTab:
 
     def save_config(self):
         config_data = {
+            "schema_version": 2,
             "click_coords_1": list(self.click_coords_1) if self.click_coords_1 else None,
             "click_coords_2": list(self.click_coords_2) if self.click_coords_2 else None,
             "click_coords_3": list(self.click_coords_3) if self.click_coords_3 else None,
             "click_coords_4": list(self.click_coords_4) if self.click_coords_4 else None,
             "click_coords_5": list(self.click_coords_5) if self.click_coords_5 else None,
-            "ocr_area_message": list(self.ocr_area_message) if self.ocr_area_message else None,
+            "ocr_area_message": self.ocr_area_message if self.ocr_area_message else None,
             "delay_ms": self.delay_var.get(),
         }
         try:
             path = self._get_config_path()
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(config_data, f, indent=2)
+            from core.profiles import atomic_json
+            atomic_json(path, config_data)
             self.main_window.update_status("Heil Auto config saved successfully!")
             messagebox.showinfo("Config Saved", "Heil Auto configuration has been saved.")
         except Exception as e:
@@ -271,7 +266,7 @@ class HeilTab:
                     getattr(self.automation, f"set_click_position_{i}")(coords)
                     getattr(self, f"click_coord_var{i}").set(f"({coords[0]}, {coords[1]})")
             if data.get("ocr_area_message"):
-                self.ocr_area_message = tuple(data["ocr_area_message"])
+                self.ocr_area_message = data["ocr_area_message"]
                 self.automation.set_ocr_area_message(self.ocr_area_message)
             if data.get("delay_ms"):
                 self.delay_var.set(str(data["delay_ms"]))

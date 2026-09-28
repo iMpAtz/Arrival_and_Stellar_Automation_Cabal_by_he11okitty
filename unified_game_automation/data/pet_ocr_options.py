@@ -6,7 +6,7 @@ def get_pet_ocr_options():
         'All Attack UP', 
         'All Skill Amp. UP', 
         'Alz drop amount', 
-        'Aura Mode Duration Increase', 
+        'Aura Mode Duration', 
         'Cancel Ignore Evasion', 
         'Cancel Ignore Penetration', 
         'Critical DMG.', 

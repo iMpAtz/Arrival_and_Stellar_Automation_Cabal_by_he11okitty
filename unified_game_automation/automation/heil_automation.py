@@ -7,6 +7,8 @@ from core.base_automation import BaseAutomation
 
 
 class HeilAutomation(BaseAutomation):
+    INVENTORY_ACTION_DELAY_MS = 1000
+
     def __init__(self, game_connector, ocr_engine, status_callback=None, bot_core=None):
         """Initialize Heil automation"""
         super().__init__(game_connector=game_connector, ocr_engine=ocr_engine, bot_core=bot_core, name="Heil")
@@ -21,15 +23,9 @@ class HeilAutomation(BaseAutomation):
         self.click_coords_3 = None  # Position 3 - Inventory management
         self.click_coords_4 = None  # Position 4 - Inventory management
         self.click_coords_5 = None  # Position 5 - Inventory management
-        # Configuration - 5 click positions
-        self.click_coords_1 = None  # Position 1 - Main action
-        self.click_coords_2 = None  # Position 2 - Inventory management
-        self.click_coords_3 = None  # Position 3 - Inventory management
-        self.click_coords_4 = None  # Position 4 - Inventory management
-        self.click_coords_5 = None  # Position 5 - Inventory management
         self.ocr_area_message = None # OCR area for inventory message
         self.delay_ms = 1000         # Default delay in milliseconds
-        self.inventory_check_cooldown = 30  # Cooldown in seconds (1 minute)
+        self.inventory_check_cooldown = 30  # Cooldown in seconds
 
     def set_click_position_1(self, coords):
         """Set click position 1 (main action)"""
@@ -119,32 +115,32 @@ class HeilAutomation(BaseAutomation):
         self.update_status("🎒 Inventory full detected! Starting inventory management...")
         
         # Click position 2
-        if not self.running:
+        if not self.running or self.stop_event.is_set():
             return
-        self.update_status("Clicking position 2...")
-        self.game_connector.click_at_position(self.click_coords_2)
-        self.safe_sleep_ms(1000)
+        self.protected_click(self.click_coords_2, label="Position 2 (Close Heil)")
+        if not self.safe_sleep_ms(self.INVENTORY_ACTION_DELAY_MS):
+            return
 
         # Click position 3
-        if not self.running:
+        if not self.running or self.stop_event.is_set():
             return
-        self.update_status("Clicking position 3...")
-        self.game_connector.click_at_position(self.click_coords_3)
-        self.safe_sleep_ms(1000)
+        self.protected_click(self.click_coords_3, label="Position 3 (Inventory Sort)")
+        if not self.safe_sleep_ms(self.INVENTORY_ACTION_DELAY_MS):
+            return
 
         # Click position 4
-        if not self.running:
+        if not self.running or self.stop_event.is_set():
             return
-        self.update_status("Clicking position 4...")
-        self.game_connector.click_at_position(self.click_coords_4)
-        self.safe_sleep_ms(1000)
+        self.protected_click(self.click_coords_4, label="Position 4 (Cabal Icon)")
+        if not self.safe_sleep_ms(self.INVENTORY_ACTION_DELAY_MS):
+            return
 
         # Click position 5
-        if not self.running:
+        if not self.running or self.stop_event.is_set():
             return
-        self.update_status("Clicking position 5...")
-        self.game_connector.click_at_position(self.click_coords_5)
-        self.safe_sleep_ms(1000)
+        self.protected_click(self.click_coords_5, label="Position 5 (Heil Research)")
+        if not self.safe_sleep_ms(self.INVENTORY_ACTION_DELAY_MS):
+            return
 
         self.update_status("✅ Inventory management complete, resuming main loop...")
 
@@ -173,8 +169,8 @@ class HeilAutomation(BaseAutomation):
             click_count += 1
 
             # Click at position 1 (main action)
-            if not self.game_connector.click_at_position(self.click_coords_1):
-                pass  # Silent fail, don't spam status
+            if not self.protected_click(self.click_coords_1):
+                return
             
             # Wait for the specified delay (using interruptible sleep)
             if not self.safe_sleep_ms(self.delay_ms):

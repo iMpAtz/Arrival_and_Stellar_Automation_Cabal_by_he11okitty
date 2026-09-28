@@ -1,0 +1,10 @@
+# Versions installed and exercised on Windows / Python 3.14.4.
+customtkinter==6.0.0
+pytesseract==0.3.13
+opencv-python==5.0.0.93
+numpy==2.3.5
+pywin32==311
+pywinauto==0.6.9
+Pillow==12.2.0
+keyboard==0.13.5
+mouse==0.7.1

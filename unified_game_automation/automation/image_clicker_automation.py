@@ -10,6 +10,7 @@
 import time
 import os
 import threading
+import copy
 
 import cv2
 import numpy as np
@@ -24,7 +25,9 @@ class ImageClickerAutomation:
     by the shared stop mechanism.
     """
 
-    def __init__(self, game_connector, status_callback=None):
+    def __init__(self, game_connector, status_callback=None, runtime_core=None):
+        self.runtime_core = runtime_core
+        self.session = None
         self.game_connector = game_connector
         self._status_callback = status_callback
 
@@ -47,6 +50,9 @@ class ImageClickerAutomation:
         self.detection_count = 0
         self.click_count = 0
 
+        from core.template_matcher import TemplateMatcher
+        self.matcher = TemplateMatcher()
+        self._frame_cache = {}
         self.running = False
         self._scan_interval_ms = 200  # ms between full scan cycles
 
@@ -63,11 +69,11 @@ class ImageClickerAutomation:
     # ------------------------------------------------------------------ #
 
     def set_image_configs(self, configs):
-        self._image_configs = list(configs) if configs else []
+        self._image_configs = copy.deepcopy(configs) if configs else []
         self._template_cache.clear()
 
     def set_search_areas(self, areas):
-        self._search_areas = list(areas) if areas else []
+        self._search_areas = copy.deepcopy(areas) if areas else []
 
     def set_scan_interval(self, ms):
         self._scan_interval_ms = max(50, int(ms))
@@ -131,49 +137,20 @@ class ImageClickerAutomation:
             if not self.game_connector.connect_to_game():
                 return False
 
-        # For Left Click, delegate to the existing (tested) method
-        if click_type == "Left Click" or click_type not in (
-            "Right Click", "Double Click", "Middle Click"
-        ):
-            rel_x, rel_y, ok = self.game_connector.convert_to_window_coords(
-                screen_x, screen_y
-            )
-            if not ok:
-                return False
-            return self.game_connector.click_at_position((rel_x, rel_y))
-
-        # For other click types, apply the same client-area adjustment
         rel_x, rel_y, ok = self.game_connector.convert_to_window_coords(
             screen_x, screen_y
         )
         if not ok:
             return False
 
-        offset = self.game_connector.get_window_client_offset()
-        if offset:
-            rel_x -= offset[0]
-            rel_y -= offset[1]
-
-        try:
-            window = self.game_connector.game_window
-            if window is None:
-                return False
-
-            if click_type == "Right Click":
-                window.right_click(coords=(rel_x, rel_y))
-            elif click_type == "Double Click":
-                window.double_click(coords=(rel_x, rel_y))
-            elif click_type == "Middle Click":
-                try:
-                    import mouse as _mouse
-                    _mouse.move(screen_x, screen_y)
-                    _mouse.click(button='middle')
-                except Exception:
-                    window.click(coords=(rel_x, rel_y))
-            return True
-        except Exception as e:
-            self.update_status(f"Click failed: {e}")
-            return False
+        if click_type == "Right Click":
+            return self.game_connector.right_click_at_position((rel_x, rel_y))
+        elif click_type == "Middle Click":
+            return self.game_connector.middle_click_at_position((rel_x, rel_y))
+        elif click_type == "Double Click":
+            return self.game_connector.double_click_at_position((rel_x, rel_y))
+        else:
+            return self.game_connector.click_at_position((rel_x, rel_y))
 
     # ------------------------------------------------------------------ #
     # Own sleep — independent of BotCore
@@ -200,6 +177,15 @@ class ImageClickerAutomation:
         if not enabled:
             return False, "No enabled images configured"
         for cfg in enabled:
+            try:
+                if not 0 <= float(cfg.get("threshold", 0.85)) <= 1:
+                    raise ValueError
+                if not 0.5 <= float(cfg.get("scale_min", 1)) <= float(cfg.get("scale_max", 1)) <= 2:
+                    raise ValueError
+                if int(cfg.get("cooldown_ms", 1000)) < 0:
+                    raise ValueError
+            except (ValueError, TypeError):
+                return False, "Invalid threshold, scale range, or cooldown"
             fp = cfg.get("file_path", "")
             if not fp or not os.path.isfile(fp):
                 return False, f"Image file not found: {fp}"
@@ -217,7 +203,7 @@ class ImageClickerAutomation:
                 return False
 
         with self._lock:
-            if self.running:
+            if self.running or (self._thread and self._thread.is_alive()):
                 self.update_status("Already running")
                 return False
 
@@ -226,11 +212,16 @@ class ImageClickerAutomation:
             self.click_count = 0
             self._last_clicked_at.clear()
             self._template_cache.clear()
-            self._stop_event.clear()
+            from core.session import RunSession
+            core = self.runtime_core
+            self.session = RunSession("Image Clicker", bool(core and core.dry_run),
+                                      core.max_seconds if core else 1800,
+                                      core.max_actions if core else 10000)
+            self._stop_event = self.session.cancel
             self.running = True
 
             self._thread = threading.Thread(
-                target=self._automation_loop,
+                target=self._run_session_loop,
                 name="image-clicker-loop",
                 daemon=True,
             )
@@ -244,11 +235,8 @@ class ImageClickerAutomation:
             was_running = self.running
             self.running = False
             self._stop_event.set()
-
-        # Wait for thread to finish (non-blocking from UI perspective)
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2.0)
-        self._thread = None
+            if self.session:
+                self.session.stop("user_stop")
 
         if was_running:
             self.update_status(
@@ -256,6 +244,8 @@ class ImageClickerAutomation:
             )
 
     def emergency_stop(self):
+        if self.session:
+            self.session.stop("emergency_stop")
         self.running = False
         self._stop_event.set()
         self.update_status("🚨 EMERGENCY STOP — Image Clicker stopped!")
@@ -268,6 +258,11 @@ class ImageClickerAutomation:
         self.update_status("🖱️ Image Clicker scanning started")
 
         while self.running and not self._stop_event.is_set():
+            reason = self.session.limit_reason() if self.session else ""
+            if reason:
+                self.session.stop(reason)
+                break
+            self._frame_cache.clear()
             enabled_configs = [c for c in self._image_configs if c.get("enabled")]
 
             for cfg in enabled_configs:
@@ -313,7 +308,9 @@ class ImageClickerAutomation:
         if area_rect is None:
             return
 
-        screenshot = self.game_connector.take_screenshot(area_rect)
+        if area_rect not in self._frame_cache:
+            self._frame_cache[area_rect] = self.game_connector.take_screenshot(area_rect)
+        screenshot = self._frame_cache[area_rect]
         if screenshot is None:
             return
 
@@ -331,12 +328,11 @@ class ImageClickerAutomation:
                 template.shape[1] > screen_np.shape[1]):
             return
 
-        # Template matching
-        try:
-            result = cv2.matchTemplate(screen_np, template, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, max_loc = cv2.minMaxLoc(result)
-        except Exception:
+        found = self.matcher.match(screen_np, template, float(cfg.get("scale_min", 1.0)),
+                                   float(cfg.get("scale_max", 1.0)))
+        if found is None:
             return
+        max_val, max_loc, (templ_w, templ_h) = found
 
         if max_val < threshold:
             return
@@ -344,7 +340,6 @@ class ImageClickerAutomation:
         # Detection!
         self.detection_count += 1
 
-        templ_h, templ_w = template.shape[:2]
         center_x = area_rect[0] + max_loc[0] + templ_w // 2 + offset_x
         center_y = area_rect[1] + max_loc[1] + templ_h // 2 + offset_y
 
@@ -352,7 +347,10 @@ class ImageClickerAutomation:
             f"🎯 Detected '{img_name}' (confidence {max_val:.3f}) → {click_type}"
         )
 
+        if self._stop_event.is_set():
+            return
         if self._perform_click(click_type, center_x, center_y):
+            self._frame_cache.clear()  # Any action invalidates previously captured pixels.
             self.click_count += 1
             self._last_clicked_at[file_path] = time.time()
             self.update_status(
@@ -360,3 +358,27 @@ class ImageClickerAutomation:
             )
         else:
             self.update_status(f"⚠️ Click failed for '{img_name}'")
+
+    def _run_session_loop(self):
+        from core.profiles import atomic_json
+        from core.paths import writable_root
+        if self.runtime_core:
+            self.runtime_core.bind_background(self.session)
+        try:
+            self._automation_loop()
+        except Exception as exc:
+            self.session.errors += 1
+            self.session.stop("worker_error")
+            self.update_status(str(exc))
+        finally:
+            self.running = False
+            self.session.stop(self.session.stop_reason or "completed")
+            self.session.completed = True
+            report = self.session.report()
+            report.update({"detections": self.detection_count, "clicks": self.click_count})
+            directory = self.runtime_core.report_dir if self.runtime_core else writable_root()/"summaries"
+            try:
+                atomic_json(directory/f"run_{self.session.run_id}.json", report)
+            except OSError as exc:
+                self.update_status(f"Could not save report: {exc}")
+            self.update_status(f"Stopped: {self.session.stop_reason}")

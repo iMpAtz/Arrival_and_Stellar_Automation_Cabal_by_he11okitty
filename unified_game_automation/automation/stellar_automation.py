@@ -6,6 +6,12 @@ from data.stellar_data import get_penetration_exceptions
 
 
 class StellarAutomation(BaseAutomation):
+    # Timing constants (ms)
+    INITIAL_LOOP_DELAY_MS = 3000
+    IMPRINT_POST_CLICK_DELAY_MS = 200
+    RETRY_READ_DELAY_MS = 700
+    IMPRINT_DOUBLE_CLICK_DELAY_MS = 300
+
     def __init__(self, game_connector, ocr_engine, status_callback=None, bot_core=None):
         super().__init__(game_connector=game_connector, ocr_engine=ocr_engine, bot_core=bot_core, name="Stellar")
         self.loop_in_progress = False
@@ -13,6 +19,7 @@ class StellarAutomation(BaseAutomation):
         self.area = None
         self.imprint_button_coords = None
         self.option_constraints = []
+        self.effect_delay_ms = 1000
         # Stat tracking
         self.stat_counter = {}
         self.unmapped_ocr_counter = {}
@@ -111,106 +118,45 @@ class StellarAutomation(BaseAutomation):
         return min_value in text
 
     def _automation_loop(self):
-        if not self.safe_sleep_ms(3000):
+        from core.fsm import VerifiedReroll
+        from core.observations import parse_stats, evaluate
+        from data.stellar_data import get_stellar_options
+        constraints = []
+        for constraint in self.option_constraints:
+            value = str(constraint.get("min_value", "")).strip().lstrip("+").rstrip("%")
+            if value and not value.isdigit():
+                self.core.stop("invalid_minimum")
+                return
+            constraints.append((constraint["display_name"], int(value or 0)))
+        if not constraints:
+            self.core.stop("no_targets")
             return
-        while self.running and not self.stop_event.is_set():
-            if self.core:
-                self.core.heartbeat("stellar-main-loop")
-            if not self.loop_ocr():
-                break
-            if not self.safe_sleep_ms(self.delay_ms):
-                break
-        self.running = False
 
-    def loop_ocr(self):
-        if self.loop_in_progress:
-            self.update_status("loop_ocr called but loop_in_progress is True - skipping re-entrance.")
-            return True
-        if not self.running:
-            return False
+        def observe():
+            image = self.game_connector.capture_area_bitblt(self.area)
+            self.last_image = image
+            raw = self.ocr_engine.extract_text(image, fresh=True) if image is not None else ""
+            return parse_stats(raw, get_stellar_options(), stellar=True)
 
-        self.loop_in_progress = True
-        try:
+        def decide(observation):
+            for stat in observation.stats:
+                key = str(stat.value)
+                self.stat_counter[key] = self.stat_counter.get(key, 0) + 1
+            return evaluate(observation, constraints)
+
+        def act():
+            if not self.protected_click(self.imprint_button_coords, "Imprint"):
+                return False
+            if not self.safe_sleep_ms(self.IMPRINT_DOUBLE_CLICK_DELAY_MS):
+                return False
+            if not self.protected_click(self.imprint_button_coords, "Confirm imprint"):
+                return False
             if not self.safe_sleep_ms(self.effect_delay_ms):
                 return False
-            self.protected_click(self.imprint_button_coords, "Close")
-            if not self.safe_sleep_ms(200):
-                return False
+            return self.protected_click(self.imprint_button_coords, "Close result effect")
 
-            screenshot = self.game_connector.capture_area_bitblt(self.area)
-            if screenshot is None:
-                self.update_status("BitBlt capture failed")
-                self.stop()
-                return False
-
-            raw_text = self.ocr_engine.extract_text(screenshot)
-            text = self.ocr_engine.parse_stellar_text(raw_text)
-            text_compact = re.sub(r"\s+", "", text).lower()
-            self.update_status(f"OCR text: {text}")
-
-            # Track the full OCR text for unmapped options
-            if text.strip():
-                text_key = text.strip()[:50]  # Limit length
-                self.unmapped_ocr_counter[text_key] = self.unmapped_ocr_counter.get(text_key, 0) + 1
-
-            numbers_found = self.ocr_engine.find_numbers(text)
-            if len(numbers_found) != 1:
-                self.wrong_read_counter += 1
-                if self.wrong_read_counter > 2:
-                    messagebox.showinfo(
-                        "Error",
-                        "Found wrong amount of numbers - stopping.\n"
-                        "Make sure that you've defined area correctly, please restart application",
-                    )
-                    self.update_status("More than one (or zero) numbers found in text. Stopping.")
-                    self.stop()
-                    return False
-                if not self.safe_sleep_ms(700):
-                    return False
-                return True
-
-            self.wrong_read_counter = 0
-            
-            # Track the found value
-            if numbers_found:
-                found_value = numbers_found[0]
-                value_key = f"{found_value}"
-                self.stat_counter[value_key] = self.stat_counter.get(value_key, 0) + 1
-            
-            target_found = False
-            for constraint in self.option_constraints:
-                option_name = constraint.get('name', '')
-                min_value = constraint.get('min_value', '')
-                if not option_name:
-                    continue
-                if option_name == "penetration":
-                    exceptions = get_penetration_exceptions()
-                    if any(exc in text_compact for exc in exceptions):
-                        self.update_status("Found 'penetration' but ignoring special exception phrase.")
-                        continue
-                if option_name not in text_compact:
-                    continue
-                if self.min_value_matches(min_value, text_compact):
-                    target_found = True
-                    break
-
-            if target_found:
-                messagebox.showinfo("Found it!", "Target option found.")
-                self.update_status("Target option found - success!")
-                if self.target_found_callback:
-                    self.target_found_callback()
-                self.stop()
-                return False
-
-            self.protected_click(self.imprint_button_coords, "Imprint")
-            if not self.safe_sleep_ms(300):
-                return False
-            self.protected_click(self.imprint_button_coords, "Imprint")
-            return True
-        except Exception as e:
-            self.update_status(f"Error in OCR loop: {str(e)}")
-            messagebox.showerror("Error", f"An error occurred:\n{e}")
-            self.stop()
-            return False
-        finally:
-            self.loop_in_progress = False
+        def matched():
+            if self.target_found_callback:
+                self.target_found_callback()
+        VerifiedReroll(self, observe, decide, act, matched, self.delay_ms).run()
+        self.running = False
